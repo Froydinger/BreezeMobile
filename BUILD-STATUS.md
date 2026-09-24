@@ -1,15 +1,14 @@
 # Android development status
 
-## September 24 installed beta and remaining checks
+## September 24 direct-download release 0.1.6
 
-- Pixel regular app is `com.froydinger.breeze`, versionCode 6 / versionName 0.1.5. Its installed `base.apk` SHA-256 is `a33951967c8300013e0e3adb8b9c357c9f391c594037fc0ef502ba3ba261f9c0`, exactly matching the signed GitHub release asset `Breeze-Android-0.1.5-beta.1-arm64.apk`. The installed binary is current for the Android source at commit `8127b5d`.
-- The Pixel also has a separate older development install, `com.froydinger.breeze.dev`, versionCode 5 / versionName 0.1.4-dev.
-- The only GitHub commit ahead of the old monorepo checkout changes desktop files; it does not change Android. Android source is now maintained in the separate `BreezeMobile` repository.
-- Checked-in automated tests currently cover the reminder request parser only. Existing QA records cover specific emulator flows, not full feature coverage.
-- Still lacking equivalent end-to-end checks: importing real bookmark/password exports; microphone and location permission flows; website password autofill; reminder notification timing/recurrence; picture-in-picture and external app handoff; and broad physical-device/site coverage.
-- Current local-only Worker edits in the old monorepo have not been tested or deployed. The installed APK continues using the live Worker and has not been changed by those edits.
-
-No broader release readiness is implied by the checks above.
+- Production app `com.froydinger.breeze` is installed on Pixel 11 at versionCode 7 / versionName 0.1.6. Updated in place with `adb install -r`; no uninstall was used.
+- Signed APK: [`Breeze-Android-0.1.6-beta.1-arm64.apk`](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.6-beta.1/Breeze-Android-0.1.6-beta.1-arm64.apk). SHA-256: `a517e2f3b876d44c1c31b5e0b2910d63ef43a4446328afd10574aed0b62ed878`. APK signature and alignment passed; signing certificate matches the existing release identity.
+- Android source is pushed at `Froydinger/BreezeMobile` commit `1e4a2e1`. `:app:testDebugUnitTest` and `:app:assembleRelease` succeeded. Unit tests cover bookmark/password export parsing, credential origin checks, and reminder scheduling/delivery policy.
+- Pixel smoke check: Breeze launched at version 0.1.6, stayed foregrounded, and the active system PiP video changed frames in successive screenshots. No fatal exception or signal appeared in the sampled app log.
+- The Android download buttons and version label are live at [breeze.froydinger.design/mobile](https://breeze.froydinger.design/mobile/). Site commit: `Froydinger/breezebrowser` `03796f1`; Netlify production deploy succeeded and both the page and APK link returned successfully.
+- Still not verified end to end: importing real export files, biometric save/fill on a live website, reminder delivery at scheduled time, microphone/location permission flows, external-app handoff across many apps, and broad device/site coverage. These tests are not claimed as passed.
+- No Worker files changed in this release. Cloud sync remains marked coming soon.
 
 ## September 23 verification
 
