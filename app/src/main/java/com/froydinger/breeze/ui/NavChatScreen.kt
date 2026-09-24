@@ -546,7 +546,7 @@ fun NavChatScreen(state: BrowserState, modifier: Modifier = Modifier) {
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { keyboardController?.hide(); submitNavChat(draft, selectedTool, chat?.running == true, state, { draft = "" }) { reminderDraft = it; showReminderComposer = true } }),
+                    keyboardActions = KeyboardActions(onSend = { keyboardController?.hide(); submitNavChat(draft, selectedTool, chat?.running == true, state) { draft = "" } }),
                     decorationBox = { inner ->
                         if (draft.isEmpty()) Text(if (selectedTool.localReminder) "What should Breeze remind you?" else "Ask anything…", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         inner()
@@ -563,11 +563,11 @@ fun NavChatScreen(state: BrowserState, modifier: Modifier = Modifier) {
                     keyboardController?.hide()
                     val spoken = recognized.trim()
                     val message = if (draft.trim().endsWith(spoken)) draft.trim() else listOf(draft.trim(), spoken).filter(String::isNotBlank).joinToString("\n")
-                    submitNavChat(message, selectedTool, chat?.running == true, state, { draft = "" }) { reminderDraft = it; showReminderComposer = true }
+                    submitNavChat(message, selectedTool, chat?.running == true, state) { draft = "" }
                 },
             )
                 IconButton(
-                    onClick = { keyboardController?.hide(); submitNavChat(draft, selectedTool, requestRunning, state, { draft = "" }) { reminderDraft = it; showReminderComposer = true } },
+                    onClick = { keyboardController?.hide(); submitNavChat(draft, selectedTool, requestRunning, state) { draft = "" } },
                     enabled = (!selectedTool.needsPrompt || draft.isNotBlank() || state.pendingImageUri != null) && (draft.isNotBlank() || state.pendingImageUri != null || selectedTool.slug.isNotEmpty()) && !requestRunning,
                     modifier = Modifier.size(60.dp).clip(CircleShape).border(1.5.dp, navAccent, CircleShape),
                 ) {
@@ -637,9 +637,9 @@ private fun CopyMessageButton(text: String, state: BrowserState) {
     }
 }
 
-private fun submitNavChat(draft: String, tool: ChatTool, running: Boolean, state: BrowserState, clear: () -> Unit, onReminder: (String) -> Unit) {
+private fun submitNavChat(draft: String, tool: ChatTool, running: Boolean, state: BrowserState, clear: () -> Unit) {
     if (running || (draft.isBlank() && state.pendingImageUri == null && (tool.slug.isEmpty() || tool.needsPrompt))) return
-    if (tool.localReminder) { onReminder(draft.trim()); clear(); return }
+    if (tool.localReminder) { state.sendReminderRequest(draft.trim()); clear(); return }
     val payload = if (tool.slug.isEmpty()) draft.trim() else "/${tool.slug} ${draft.trim()}".trim()
     if (state.activeChat == null) state.startChat(payload) else state.sendChat(payload)
     clear()

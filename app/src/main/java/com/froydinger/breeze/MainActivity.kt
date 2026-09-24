@@ -363,6 +363,7 @@ private fun pictureInPictureParams(context: android.content.Context, state: Brow
     val context = LocalContext.current
     val onboardingPreferences = remember(context) { context.getSharedPreferences("breeze_onboarding", android.content.Context.MODE_PRIVATE) }
     var showOnboarding by remember(onboardingPreferences) { mutableStateOf(!onboardingPreferences.getBoolean("complete", false)) }
+    var showDevUpdatePrompt by remember { mutableStateOf(BuildConfig.DEBUG) }
     LaunchedEffect(activity, dark) { activity?.let { AppIconManager.applyTheme(it, dark) } }
     val selectedForPip = state.selected
     LaunchedEffect(activity, state.selectedId, state.screen, selectedForPip?.videoPlaying,
@@ -652,6 +653,17 @@ private fun pictureInPictureParams(context: android.content.Context, state: Brow
             if (state.ready && showOnboarding && !state.isPictureInPicture) FirstRunOnboarding {
                 onboardingPreferences.edit().putBoolean("complete", true).apply()
                 showOnboarding = false
+            }
+            if (showDevUpdatePrompt && BuildConfig.DEBUG && state.ready && !showOnboarding && !state.isPictureInPicture) {
+                DebugUpdatePrompt(
+                    onDismiss = { showDevUpdatePrompt = false },
+                    onDownload = {
+                        showDevUpdatePrompt = false
+                        state.notice = if (enqueueTestUpdateDownload(context)) {
+                            "Breeze update download started. Tap the Android download notification to install it."
+                        } else "Breeze could not start the update download. Try again from Breeze Dev."
+                    },
+                )
             }
             }
         }

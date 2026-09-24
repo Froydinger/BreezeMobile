@@ -1,5 +1,15 @@
 # Android development status
 
+## September 24 direct-download release 0.1.7
+
+- Production app `com.froydinger.breeze` is installed on Pixel 11 at versionCode 8 / versionName 0.1.7, updated in place with `adb install -r`.
+- Signed APK: [`Breeze-Android-0.1.7-beta.1-arm64.apk`](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.7-beta.1/Breeze-Android-0.1.7-beta.1-arm64.apk). SHA-256: `c74805207a0542459a5a0de78198748d1a6ba1ceb47d2589c4aa127b42638756`. Signature identity matches the existing 0.1.6 release.
+- Fixes: system theme changes are handled without recreating the browser activity; Nav's Reminder tool submits reminder requests for local parsing/scheduling rather than always opening the manual form; parser accepts “set a reminder …” wording and removes the leading “to” from the saved title.
+- Pixel theme check: switched in-app System → Light → Dark → System and changed system night mode Light → Dark → Auto. The production process stayed at PID 25539 throughout; no Android runtime exception appeared in the sampled log.
+- Build checks: `:app:testDebugUnitTest`, `:app:assembleDebug`, and `:app:assembleRelease` passed. This is not a claim of exhaustive device/site testing.
+- Breeze Dev contains a test-only “Time to update” prompt that downloads this APK through Android Download Manager. The production build does not show it. The prompt is static for this UX test; automatic GitHub release checks are not implemented until the user approves the flow.
+- Breeze website lander links were updated to this asset and deployed to the verified `breezebrowser` Netlify site. No Breeze Cloud Worker files changed.
+
 ## September 24 direct-download release 0.1.6
 
 - Production app `com.froydinger.breeze` is installed on Pixel 11 at versionCode 7 / versionName 0.1.6. Updated in place with `adb install -r`; no uninstall was used.

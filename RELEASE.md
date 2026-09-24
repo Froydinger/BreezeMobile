@@ -6,7 +6,7 @@
 - **Breeze Cloud mobile API:** `Froydinger/breezebrowser-live`, in `cloudflare/breeze-chat-worker`; the app calls `/v1/mobile/responses`. Its current protocol notes are copied to [`cloud/MOBILE-RESPONSES.md`](cloud/MOBILE-RESPONSES.md) for app-side reference. Keep the copy and Worker documentation aligned when the protocol changes.
 - **Website and Android lander:** the separate `Froydinger/breezebrowser` site repository, at `/mobile/`. The lander links to a versioned APK release; it does not build or sign the app.
 
-The existing live lander still points to the 0.1.5 beta asset in `breezebrowser-live`. Leave that working link in place until a new signed APK is published from this repository; then move the lander to the new versioned asset as part of that release.
+Keep the live lander pointed at the latest published signed APK until the next signed APK is attached to a versioned GitHub release. Then update the Android URLs and version label in the separate website repository as part of the same release.
 
 ## Publishing a new Android beta
 

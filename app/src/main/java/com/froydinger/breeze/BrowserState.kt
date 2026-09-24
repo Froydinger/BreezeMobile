@@ -1096,6 +1096,15 @@ class BrowserState(private val app: Application) {
         persist()
     }
 
+    /** Submit the Reminder tool through Nav so explicit requests are saved and scheduled immediately. */
+    fun sendReminderRequest(prompt: String) {
+        val text = prompt.trim()
+        if (text.isBlank()) return
+        if (activeChat == null) startChat()
+        val command = if (ReminderRequestParser.isReminderRequest(text)) text else "Remind me to $text"
+        sendChat(command)
+    }
+
     /** Start Nav from the home logo with a clean surface and no page context behind it. */
     fun startStandaloneNavChat() {
         if (selected?.private == true) {

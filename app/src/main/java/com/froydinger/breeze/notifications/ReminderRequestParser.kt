@@ -13,7 +13,10 @@ data class ParsedReminderRequest(val title: String, val dueAt: Long, val repeat:
 
 /** A small, predictable local parser for explicit "remind me" requests. */
 object ReminderRequestParser {
-    private val prefix = Regex("^\\s*(?:please\\s+)?remind\\s+me(?:\\s+to)?\\s+", RegexOption.IGNORE_CASE)
+    private val prefix = Regex(
+        "^\\s*(?:please\\s+)?(?:remind\\s+me(?:\\s+to)?|set\\s+(?:a\\s+)?reminder(?:\\s+(?:to|for))?|create\\s+(?:a\\s+)?reminder(?:\\s+(?:to|for))?)\\s+",
+        RegexOption.IGNORE_CASE,
+    )
     private val relative = Regex("\\bin\\s+(\\d{1,4})\\s*(minute|hour|day)s?\\b", RegexOption.IGNORE_CASE)
     private val clock12 = Regex("\\b(?:at\\s+)?(1[0-2]|0?[1-9])(?::([0-5]\\d))?\\s*(a\\.?m\\.?|p\\.?m\\.?)\\b", RegexOption.IGNORE_CASE)
     private val clock24 = Regex("\\bat\\s+([01]?\\d|2[0-3]):([0-5]\\d)\\b", RegexOption.IGNORE_CASE)
@@ -95,6 +98,7 @@ object ReminderRequestParser {
         title = repeatWord.replace(title, " ")
         title = Regex("\\bnoon\\b", RegexOption.IGNORE_CASE).replace(title, " ")
         title = Regex("\\b(?:at|on)\\s*$", RegexOption.IGNORE_CASE).replace(title, " ")
+        title = Regex("^\\s*(?:to|for)\\s+", RegexOption.IGNORE_CASE).replace(title, "")
         return title.replace(Regex("\\s+"), " ").trim(' ', ',', '.', ';', ':', '-')
     }
 }
