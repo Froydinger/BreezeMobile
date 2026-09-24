@@ -192,7 +192,7 @@ fun PasswordVaultScreen() {
         SectionTitle("Passwords")
         GlassCard(Modifier.fillMaxWidth()) {
             Text("Local password vault", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text("For website logins, choose Unlock saved passwords from page tools on a regular HTTPS page. Gecko receives entries for that exact origin for up to 30 seconds; website save prompts require authentication.", style = MaterialTheme.typography.bodySmall)
+            Text("On a regular HTTPS page, use page tools to fill a saved login or save the username and password you've entered. Both actions require device authentication.", style = MaterialTheme.typography.bodySmall)
             if (!unlocked) {
                 Button(onClick = { authenticate { } }, enabled = !loading) { Text(if (loading) "Waiting for authentication…" else "Unlock vault") }
             } else {

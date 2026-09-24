@@ -131,11 +131,12 @@ object ReminderScheduler {
     fun notificationsAllowed(context: Context): Boolean {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return false
         return manager.areNotificationsEnabled() &&
-            (Build.VERSION.SDK_INT < 33 || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
+            (Build.VERSION.SDK_INT < 33 || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) &&
+            (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || manager.getNotificationChannel(CHANNEL_ID)?.importance != NotificationManager.IMPORTANCE_NONE)
     }
 
-    fun post(context: Context, reminder: LocalReminder) {
-        if (!notificationsAllowed(context)) return
+    fun post(context: Context, reminder: LocalReminder): Boolean {
+        if (!notificationsAllowed(context)) return false
         ensureChannel(context)
         val openApp = PendingIntent.getActivity(
             context,
@@ -159,7 +160,13 @@ object ReminderScheduler {
                     .build(),
             )
             .build()
-        context.getSystemService(NotificationManager::class.java)?.notify(reminder.id, reminder.id.hashCode(), notification)
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return false
+        return try {
+            manager.notify(reminder.id, reminder.id.hashCode(), notification)
+            true
+        } catch (_: SecurityException) {
+            false
+        }
     }
 
     internal const val REMINDER_ID_EXTRA = EXTRA_REMINDER_ID
@@ -186,10 +193,14 @@ class ReminderReceiver : BroadcastReceiver() {
                         ReminderScheduler.schedule(context, reminder)
                         return@launch
                     }
-                    ReminderScheduler.post(context, reminder)
-                    val next = ReminderScheduler.nextOccurrence(reminder)
-                    if (next == null) state.completeReminder(id) else state.advanceReminderOccurrence(id, next)
-                    if (next == null) state.persistImmediately()
+                    when (reminderPostAction(ReminderScheduler.post(context, reminder), reminder.repeat)) {
+                        ReminderPostAction.KEEP_PENDING -> return@launch
+                        ReminderPostAction.COMPLETE -> state.completeReminder(id)
+                        ReminderPostAction.ADVANCE -> {
+                            val next = ReminderScheduler.nextOccurrence(reminder) ?: return@launch
+                            state.advanceReminderOccurrence(id, next)
+                        }
+                    }
                 } else {
                     state.reminders.forEach { ReminderScheduler.schedule(context, it) }
                 }

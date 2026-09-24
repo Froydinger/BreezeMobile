@@ -14,14 +14,17 @@ object BreezeIcons {
     val Chat: ImageVector by lazy { icon("message-circle", "M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719") }
     val ChevronRight: ImageVector by lazy { icon("chevron-right", "m9 18 6-6-6-6") }
     val ChevronUp: ImageVector by lazy { icon("chevron-up", "m18 15-6-6-6 6") }
+    val CircleChevronDown: ImageVector by lazy { icon("circle-chevron-down", "M2.0,12.0 a10.0,10.0 0 1,0 20.0,0 a10.0,10.0 0 1,0 -20.0,0", "m8 10 4 4 4-4") }
     val Close: ImageVector by lazy { icon("x", "M18 6 6 18", "m6 6 12 12") }
     val Edit: ImageVector by lazy { icon("square-pen", "M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7", "M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z") }
     val ExpandMore: ImageVector by lazy { icon("chevron-down", "m6 9 6 6 6-6") }
     val History: ImageVector by lazy { icon("rotate-ccw-clock", "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", "M3 3v5h5", "M12 7v5l4 2") }
     val Home: ImageVector by lazy { icon("house", "M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8", "M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z") }
+    val HouseHeart: ImageVector by lazy { icon("house-heart", "M8.62 13.8A2.25 2.25 0 1 1 12 10.836a2.25 2.25 0 1 1 3.38 2.966l-2.626 2.856a.998.998 0 0 1-1.507 0z", "M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z") }
     val Image: ImageVector by lazy { icon("image", "M5.0,3.0 H19.0 Q21.0,3.0 21.0,5.0 V19.0 Q21.0,21.0 19.0,21.0 H5.0 Q3.0,21.0 3.0,19.0 V5.0 Q3.0,3.0 5.0,3.0 Z", "M7.0,9.0 a2.0,2.0 0 1,0 4.0,0 a2.0,2.0 0 1,0 -4.0,0", "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21") }
     val Info: ImageVector by lazy { icon("info", "M2.0,12.0 a10.0,10.0 0 1,0 20.0,0 a10.0,10.0 0 1,0 -20.0,0", "M12 16v-4", "M12 8h.01") }
     val Language: ImageVector by lazy { icon("globe", "M2.0,12.0 a10.0,10.0 0 1,0 20.0,0 a10.0,10.0 0 1,0 -20.0,0", "M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20", "M2 12h20") }
+    val Link: ImageVector by lazy { icon("link", "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71", "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71") }
     val Lock: ImageVector by lazy { icon("lock-keyhole", "M11.0,16.0 a1.0,1.0 0 1,0 2.0,0 a1.0,1.0 0 1,0 -2.0,0", "M5.0,10.0 H19.0 Q21.0,10.0 21.0,12.0 V20.0 Q21.0,22.0 19.0,22.0 H5.0 Q3.0,22.0 3.0,20.0 V12.0 Q3.0,10.0 5.0,10.0 Z", "M7 10V7a5 5 0 0 1 10 0v3") }
     val MoreVert: ImageVector by lazy { icon("ellipsis-vertical", "M11.0,12.0 a1.0,1.0 0 1,0 2.0,0 a1.0,1.0 0 1,0 -2.0,0", "M11.0,5.0 a1.0,1.0 0 1,0 2.0,0 a1.0,1.0 0 1,0 -2.0,0", "M11.0,19.0 a1.0,1.0 0 1,0 2.0,0 a1.0,1.0 0 1,0 -2.0,0") }
     val NavigateNext: ImageVector by lazy { icon("chevron-right", "m9 18 6-6-6-6") }

@@ -81,8 +81,10 @@ class ChromiumCredentials(
      * context for that new top-level origin.
      */
     fun updatePageContext(webView: WebView?, url: String?, privateMode: Boolean): Boolean {
-        detachCurrent()
         val origin = httpsOrigin(url)
+        if (!closed && !privateMode && webView != null && origin != null &&
+            page?.webView === webView && page?.origin == origin) return true
+        detachCurrent()
         if (closed || privateMode || webView == null || origin == null) return false
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) ||
             !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
@@ -124,6 +126,16 @@ class ChromiumCredentials(
         val current = page ?: return
         if (current.webView !== webView || httpsOrigin(url) != current.origin || !isCurrent(current)) return
         webView.evaluateJavascript(SAVE_CAPTURE_SCRIPT, null)
+    }
+
+    fun canFillCurrentPage(): Boolean = page?.let(::isCurrent) == true
+
+    /** Capture a filled login before the website submits and possibly navigates away. */
+    fun requestSaveCurrentPage() {
+        val current = page?.takeIf(::isCurrent) ?: return
+        current.webView.evaluateJavascript(SAVE_CURRENT_FORM_SCRIPT) { result ->
+            if (result != "true" && isCurrent(current)) onNotice("Fill a username and password on this page first.")
+        }
     }
 
     /** Starts the explicit native fill flow for the currently active eligible page. */
@@ -343,6 +355,23 @@ class ChromiumCredentials(
                 window.breezeCredentials.postMessage(JSON.stringify({type:'saveCandidate',username:username,password:password}));
               },true);
             })();
+        """.trimIndent()
+
+        private val SAVE_CURRENT_FORM_SCRIPT = """
+            (function(){
+              if(window!==window.top||!window.breezeCredentials||typeof window.breezeCredentials.postMessage!=='function')return false;
+              var forms=Array.prototype.slice.call(document.forms||[]);
+              var active=document.activeElement;
+              var form=active&&active.form||forms.find(function(f){return f.querySelector('input[type=password]')});
+              if(!form)return false;
+              var pass=form.querySelector('input[type=password]');
+              var user=form.querySelector('input[autocomplete=username],input[type=email],input[name*=user i],input[name*=email i],input[type=text]');
+              var username=user?String(user.value||''):'';
+              var password=pass?String(pass.value||''):'';
+              if(!username||!password||username.length>1024||password.length>4096)return false;
+              window.breezeCredentials.postMessage(JSON.stringify({type:'saveCandidate',username:username,password:password}));
+              return true;
+            })()
         """.trimIndent()
     }
 }

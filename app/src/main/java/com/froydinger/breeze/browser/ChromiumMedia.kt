@@ -74,9 +74,9 @@ class ChromiumMedia(
               if(window.__breezeMedia) return;
               var pip=false, style=null, timer=0, last='';
               function media(){return Array.prototype.slice.call(document.querySelectorAll('video,audio'));}
-              function active(){var a=media();return a.find(function(x){return !x.paused&&!x.ended;})||a.find(function(x){return x.videoWidth||x.tagName==='AUDIO';})||a[0]||null;}
+              function active(){var a=media();return a.find(function(x){return x.tagName==='VIDEO'&&!x.paused&&!x.ended;})||a.find(function(x){return !x.paused&&!x.ended;})||a.find(function(x){return x.tagName==='VIDEO';})||a[0]||null;}
               function report(){
-                var e=active(); if(!e)return;
+                var e=active(); if(!e){var empty=JSON.stringify({playing:false,video:false,width:0,height:0,title:document.title||''});if(empty!==last){last=empty;try{BreezeMedia.update(empty)}catch(_){}}return;}
                 var b=e.getBoundingClientRect();
                 var s={playing:!e.paused&&!e.ended,video:e.tagName==='VIDEO',width:e.videoWidth||Math.round(b.width),height:e.videoHeight||Math.round(b.height),title:document.title||''};
                 var raw=JSON.stringify(s); if(raw!==last){last=raw;try{BreezeMedia.update(raw)}catch(_){}}

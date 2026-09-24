@@ -62,6 +62,11 @@ fun AddressPageTools(state: BrowserState, modifier: Modifier = Modifier) {
     var showHiddenItems by remember { mutableStateOf(false) }
     var privacyExpanded by remember { mutableStateOf(false) }
     var librarySettingsExpanded by remember { mutableStateOf(false) }
+    val chevronRotation by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 180),
+        label = "pageToolsChevronRotation",
+    )
     val menuScrollState = rememberScrollState()
     val context = LocalContext.current
     val shortcutScope = rememberCoroutineScope()
@@ -83,10 +88,14 @@ fun AddressPageTools(state: BrowserState, modifier: Modifier = Modifier) {
 
     androidx.compose.foundation.layout.Box {
         IconButton(
-            onClick = { expanded = true },
+            onClick = { expanded = !expanded },
             modifier = modifier.size(48.dp).clip(RoundedCornerShape(15.dp)),
         ) {
-            ComposeIcon(BreezeIcons.Tune, contentDescription = "Page tools", modifier = Modifier.size(22.dp))
+            ComposeIcon(
+                BreezeIcons.CircleChevronDown,
+                contentDescription = "Page tools",
+                modifier = Modifier.size(18.dp).graphicsLayer { rotationZ = chevronRotation },
+            )
         }
         val glassEnabled = LocalGlassEnabled.current
         val menuShape = RoundedCornerShape(22.dp)
@@ -121,6 +130,10 @@ fun AddressPageTools(state: BrowserState, modifier: Modifier = Modifier) {
                     if (existingBookmark != null) bookmarkRemovalUrl = existingBookmark.url else state.bookmark()
                 }
                 PageAction("Share link", BreezeIcons.Share) { expanded = false; state.share()?.let(context::startActivity) }
+                if (state.canFillSitePasswords()) {
+                    PageAction("Fill saved login", BreezeIcons.Lock) { expanded = false; state.fillSitePasswords() }
+                    PageAction("Save current login", BreezeIcons.Lock) { expanded = false; state.saveSitePassword() }
+                }
 
                 PageMenuDivider()
                 PrivacySectionHeader(expanded = privacyExpanded, onClick = { privacyExpanded = !privacyExpanded })

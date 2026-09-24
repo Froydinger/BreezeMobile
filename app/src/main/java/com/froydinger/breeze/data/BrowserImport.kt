@@ -12,7 +12,8 @@ object BrowserImport {
         val href = Regex("(?is)\\bhref\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))")
         for (match in anchors.findAll(source)) {
             val attr = href.find(match.groupValues[1]) ?: continue
-            val rawUrl = listOf(attr.groupValues[1], attr.groupValues[2], attr.groupValues[3]).first { it.isNotEmpty() }
+            val rawUrl = listOf(attr.groupValues[1], attr.groupValues[2], attr.groupValues[3])
+                .firstOrNull { it.isNotEmpty() } ?: continue
             val url = decode(rawUrl).trim()
             if (!url.startsWith("http://", true) && !url.startsWith("https://", true)) continue
             val title = decode(match.groupValues[2].replace(Regex("(?is)<[^>]*>"), " ")).trim().ifBlank { url }

@@ -300,18 +300,32 @@ class BrowserState(private val app: Application) {
     var showFind by mutableStateOf(false)
     var ready by mutableStateOf(false)
     var credentials: com.froydinger.breeze.browser.BrowserCredentials? = null
+    var chromiumCredentials: com.froydinger.breeze.browser.ChromiumCredentials? = null
     fun attachCredentials(value: com.froydinger.breeze.browser.BrowserCredentials?) {
         credentials = value
         if (tabs.any { it.session != null }) runtime.autocompleteStorageDelegate = value
         updateCredentialContext()
     }
-    fun updateCredentialContext() { credentials?.updatePageContext(selected?.session, selected?.url, selected?.private != false || screen != "browser") }
+    fun updateCredentialContext() {
+        val tab = selected?.takeIf { screen == "browser" }
+        credentials?.updatePageContext(tab?.session, tab?.url, tab?.private != false)
+        chromiumCredentials?.updatePageContext(tab?.chromiumView, tab?.url, tab?.private != false)
+    }
     fun unlockSitePasswords() {
         updateCredentialContext()
         credentials?.unlockForSite(selected?.url.orEmpty()) { ok ->
             notice = if (ok) "Vault unlocked for this site for 30 seconds. Tap its login field to choose a saved login." else "Saved logins are available only on a regular HTTPS page."
         }
     }
+    fun fillSitePasswords() {
+        updateCredentialContext()
+        chromiumCredentials?.requestFill()
+    }
+    fun saveSitePassword() {
+        updateCredentialContext()
+        chromiumCredentials?.requestSaveCurrentPage()
+    }
+    fun canFillSitePasswords(): Boolean = chromiumCredentials?.canFillCurrentPage() == true
     var promptDelegate: GeckoSession.PromptDelegate? = null
         set(value) { field = value; tabs.forEach { it.session?.promptDelegate = value } }
     var permissionDelegate: GeckoSession.PermissionDelegate? = null
@@ -489,12 +503,19 @@ class BrowserState(private val app: Application) {
         backgroundExpiryJob?.cancel()
         backgroundExpiryJob = null
         updateSessionPriorities()
+        if (ready && com.froydinger.breeze.notifications.ReminderScheduler.notificationsAllowed(app)) {
+            val now = System.currentTimeMillis()
+            reminders.filter { it.deliveredAt == null && it.dueAt <= now }
+                .forEach { com.froydinger.breeze.notifications.ReminderScheduler.schedule(app, it) }
+        }
     }
 
     fun preparePictureInPicture() {
         if (!selectedVideoIsPlaying || screen != "browser") return
         preparingPictureInPicture = true
-        sendPictureInPictureMessage(true)
+        // Don't alter the page layout before Android captures it into the PiP window.
+        // Some video sites pause playback when their player is restyled mid-transition.
+        selected?.chromiumView?.onResume()
         updateSessionPriorities()
     }
 
@@ -502,6 +523,7 @@ class BrowserState(private val app: Application) {
         // A paused video still belongs to the system PiP window and must retain its surface.
         isPictureInPicture = enabled
         preparingPictureInPicture = false
+        if (enabled) selected?.chromiumView?.onResume()
         sendPictureInPictureMessage(enabled)
         updateSessionPriorities()
     }
@@ -537,7 +559,9 @@ class BrowserState(private val app: Application) {
         appInForeground = false
         backgroundedAt = System.currentTimeMillis()
         tabs.forEach { tab ->
-            if (!(tab === selected && tab.chromiumMediaPlaying && !tab.private)) tab.chromiumView?.onPause()
+            val keepForPictureInPicture = tab === selected && !tab.private && (isPictureInPicture || preparingPictureInPicture)
+            if (keepForPictureInPicture) tab.chromiumView?.onResume()
+            else if (!(tab === selected && tab.chromiumMediaPlaying && !tab.private)) tab.chromiumView?.onPause()
             tab.session?.let { session ->
                 val keepForPip = shouldKeepActive(tab)
                 session.setActive(keepForPip)
@@ -690,6 +714,7 @@ class BrowserState(private val app: Application) {
         tab.loading = true
         val view = tab.chromiumView
         if (view != null) {
+            if (selectedId == tab.id && screen == "browser") updateCredentialContext()
             // Loading while AndroidView is detached or zero-height can leave Chromium's
             // CSS viewport units at 0 even after the surface gets its final bounds.
             if (view.isAttachedToWindow && view.width > 0 && view.height > 0 &&
@@ -706,6 +731,7 @@ class BrowserState(private val app: Application) {
     fun attachChromiumView(tab: LiveTab, view: WebView) {
         if (tabs.none { it === tab }) return
         tab.chromiumView = view
+        if (selectedId == tab.id && screen == "browser") updateCredentialContext()
         view.setOnScrollChangeListener(android.view.View.OnScrollChangeListener { _, _, y, _, _ ->
             onChromiumScrollChanged(tab, y)
         })
@@ -1885,23 +1911,32 @@ class BrowserState(private val app: Application) {
         com.froydinger.breeze.notifications.ReminderScheduler.cancel(app, id)
         persist()
     }
-    fun completeReminder(id: String) {
+    suspend fun completeReminder(id: String): Boolean {
         val index = reminders.indexOfFirst { it.id == id }
-        if (index < 0) return
+        if (index < 0) return false
         val reminder = reminders[index]
-        if (reminder.repeat != ReminderRepeat.NONE) return
+        if (reminder.repeat != ReminderRepeat.NONE) return false
         reminders[index] = reminder.copy(deliveredAt = System.currentTimeMillis())
+        if (!persistImmediately()) {
+            reminders[index] = reminder
+            return false
+        }
         com.froydinger.breeze.notifications.ReminderScheduler.cancel(app, id)
-        persist()
+        return true
     }
 
-    fun advanceReminderOccurrence(id: String, dueAt: Long) {
+    suspend fun advanceReminderOccurrence(id: String, dueAt: Long): Boolean {
         val index = reminders.indexOfFirst { it.id == id }
-        if (index < 0) return
-        val updated = reminders[index].copy(dueAt = dueAt)
+        if (index < 0) return false
+        val previous = reminders[index]
+        val updated = previous.copy(dueAt = dueAt)
         reminders[index] = updated
-        persist()
+        if (!persistImmediately()) {
+            reminders[index] = previous
+            return false
+        }
         com.froydinger.breeze.notifications.ReminderScheduler.schedule(app, updated)
+        return true
     }
     fun openDownload(entry: SavedDownload) {
         try {
@@ -1910,7 +1945,7 @@ class BrowserState(private val app: Application) {
         } catch (_: Exception) { notice = "This file cannot be opened. It may have moved, or need another app." }
     }
     fun share(): Intent? = selected?.url?.takeIf { it.isNotBlank() }?.let { Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, it), "Share page") }
-    private fun launchExternalUri(uriText: String) {
+    fun launchExternalUri(uriText: String) {
         val uri = Uri.parse(uriText)
         if (uri.scheme.equals("intent", ignoreCase = true)) {
             val parsed = runCatching { Intent.parseUri(uriText, Intent.URI_INTENT_SCHEME) }.getOrNull()

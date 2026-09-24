@@ -92,6 +92,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     internal val devFps: Int get() = devFpsTracker?.fps ?: 0
     internal fun watchDevPage(session: org.mozilla.geckoview.GeckoSession?) { devFpsTracker?.watchPage(session) }
     private var browserCredentials: com.froydinger.breeze.browser.BrowserCredentials? = null
+    private var chromiumCredentials: com.froydinger.breeze.browser.ChromiumCredentials? = null
     private var browserPrompts: com.froydinger.breeze.browser.BrowserPrompts? = null
     private var browserPermissions: com.froydinger.breeze.browser.BrowserPermissions? = null
     private var chromiumPrompts: com.froydinger.breeze.browser.ChromiumWebPrompts? = null
@@ -113,6 +114,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         val credentials = com.froydinger.breeze.browser.BrowserCredentials(this) { browser.notice = it }
         browserCredentials = credentials
         browser.attachCredentials(credentials)
+        chromiumCredentials = com.froydinger.breeze.browser.ChromiumCredentials(this) { browser.notice = it }
+        browser.chromiumCredentials = chromiumCredentials
         chromiumPrompts = com.froydinger.breeze.browser.ChromiumWebPrompts(this,
             resolveCurrentPage = {
                 browser.selected?.takeIf { browser.screen == "browser" }?.let {
@@ -211,8 +214,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     }
                     return false
                 }
-                val opened = runCatching { com.froydinger.breeze.ui.openExternalLinkInApp(this@MainActivity, uri) }.getOrDefault(false)
-                if (!opened) runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+                state.launchExternalUri(uri.toString())
                 return true
             }
 
@@ -223,6 +225,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
 
             override fun onPageFinished(view: WebView, url: String) {
                 state.chromiumPageFinished(tab, view, url)
+                chromiumCredentials?.onPageFinished(view, url)
                 pageProtection.onPageFinished(url)
                 tab.chromiumMedia?.install()
             }
@@ -318,7 +321,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     override fun onStop() {
         devFpsTracker?.stop(); browser.onAppBackgrounded(); browser.persist(); super.onStop()
     }
-    override fun onDestroy() { browser.releaseChromiumViewsForActivityDestroy(); browser.setChromiumViewFactory(null); browser.setPrivateProfileCleaner(null); unregisterReceiver(pipPlaybackReceiver); chromiumPrompts?.close(); chromiumDownloads?.close(); browserPrompts?.close(); browserCredentials?.close(); browserPermissions?.close(); browser.attachCredentials(null); browser.promptDelegate = null; browser.permissionDelegate = null; browser.downloadHandler = null; super.onDestroy() }
+    override fun onDestroy() { chromiumCredentials?.close(); browser.chromiumCredentials = null; browser.releaseChromiumViewsForActivityDestroy(); browser.setChromiumViewFactory(null); browser.setPrivateProfileCleaner(null); unregisterReceiver(pipPlaybackReceiver); chromiumPrompts?.close(); chromiumDownloads?.close(); browserPrompts?.close(); browserCredentials?.close(); browserPermissions?.close(); browser.attachCredentials(null); browser.promptDelegate = null; browser.permissionDelegate = null; browser.downloadHandler = null; super.onDestroy() }
 }
 
 private data class BrowserPageMorph(
@@ -923,10 +926,11 @@ private data class AddressSuggestion(val title: String, val url: String)
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (!home) IconButton(onClick = state::home, modifier = Modifier.size(40.dp)) {
-            Icon(BreezeIcons.Home, "New tab", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(BreezeIcons.HouseHeart, "New tab", Modifier.size(22.dp).offset(x = 5.dp), tint = Color(0xFF087C89))
         }
         Box(
         Modifier.weight(1f)
+            .then(if (home) Modifier else Modifier.offset(x = (-3).dp))
             .breezeGlass(if (home) 32.dp else 100.dp)
             .pointerInput(state.selectedId, home) {
                 awaitEachGesture {
@@ -967,8 +971,8 @@ private data class AddressSuggestion(val title: String, val url: String)
         Row(verticalAlignment=Alignment.CenterVertically) {
             if(home) Icon(if(state.homeMode==HomeInputMode.ASK) BreezeIcons.AutoAwesome else BreezeIcons.Search,null,tint=BreezeTeal)
             else {
-                AddressPageTools(state, Modifier.size(42.dp))
-                Spacer(Modifier.width(6.dp))
+                AddressPageTools(state, Modifier.size(36.dp))
+                Spacer(Modifier.width(15.dp))
                 IconButton(
                     onClick = {
                         if (currentUrl.isNotBlank()) {
@@ -980,7 +984,7 @@ private data class AddressSuggestion(val title: String, val url: String)
                     modifier = Modifier.size(34.dp),
                     enabled = currentUrl.isNotBlank(),
                 ) {
-                    Icon(BreezeIcons.Paperclip, "Copy link", Modifier.size(18.dp))
+                    Icon(BreezeIcons.Link, "Copy link", Modifier.size(18.dp))
                 }
             }
             Box(Modifier.weight(1f)) {
