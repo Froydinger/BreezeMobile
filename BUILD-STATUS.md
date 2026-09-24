@@ -1,5 +1,15 @@
 # Android development status
 
+## September 24 direct-download release 0.1.8
+
+- Published signed release [`Breeze-Android-0.1.8-beta.1-arm64.apk`](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.8-beta.1/Breeze-Android-0.1.8-beta.1-arm64.apk) at [GitHub release android-v0.1.8-beta.1](https://github.com/Froydinger/BreezeMobile/releases/tag/android-v0.1.8-beta.1). SHA-256: `d24175196c8de7cdb81341955945d94b32329ba20ac1be185c39f5d75eb072fe`. APK signature fingerprint matches the existing production signer: `8448bcee588513337474ea4ae5f098fdbf35db3644ad6abd01d93be28561c628`.
+- The production app is on Pixel 11 at versionCode 9 / versionName 0.1.8. Breeze Dev is installed at versionCode 9 / versionName 0.1.8-dev. Both were updated in place. Future Pixel installs should target Breeze Dev; the user will update production Breeze through its in-app update flow.
+- Added a Git-tracked release manifest at [`update/latest.json`](https://raw.githubusercontent.com/Froydinger/BreezeMobile/main/update/latest.json). A cold launch fetches this small public manifest, compares versionCode, and caches successful checks for 12 hours (failed checks retry hourly). The app only offers a download when a higher version is published. The current 0.1.8 build correctly sees itself as current, so the automatic newer-version prompt has not yet been exercised; the user will test it with a later release.
+- The version prompt downloads the signed APK through Android Download Manager. The user confirmed the tested prompt/download flow works. Android's download notification then opens the system installer for the user's install confirmation; installation is not silent.
+- Build checks passed: `:app:testDebugUnitTest`, `:app:assembleDebug`, and `:app:assembleRelease`. `git diff --check` passed. This is not a claim of exhaustive feature or device testing.
+- The Android lander now points to 0.1.8 and explains the update check. Site commit: `Froydinger/breezebrowser` `f5ac12a`; production deploy: `6ab5b031aaaf047b071dda70` on the verified `breezebrowser` Netlify site. Both [breeze.froydinger.design/mobile](https://breeze.froydinger.design/mobile/) and [breeze.froydingermedia.online/mobile](https://breeze.froydingermedia.online/mobile/) returned HTTP 200 with the 0.1.8 listing.
+- No Cloudflare Worker files changed.
+
 ## September 24 direct-download release 0.1.7
 
 - Production app `com.froydinger.breeze` is installed on Pixel 11 at versionCode 8 / versionName 0.1.7, updated in place with `adb install -r`.
@@ -7,7 +17,7 @@
 - Fixes: system theme changes are handled without recreating the browser activity; Nav's Reminder tool submits reminder requests for local parsing/scheduling rather than always opening the manual form; parser accepts “set a reminder …” wording and removes the leading “to” from the saved title.
 - Pixel theme check: switched in-app System → Light → Dark → System and changed system night mode Light → Dark → Auto. The production process stayed at PID 25539 throughout; no Android runtime exception appeared in the sampled log.
 - Build checks: `:app:testDebugUnitTest`, `:app:assembleDebug`, and `:app:assembleRelease` passed. This is not a claim of exhaustive device/site testing.
-- Breeze Dev contains a test-only “Time to update” prompt that downloads this APK through Android Download Manager. The production build does not show it. The prompt is static for this UX test; automatic GitHub release checks are not implemented until the user approves the flow.
+- At 0.1.7, Breeze Dev had a static “Time to update” prompt to validate the download UX. Release 0.1.8 replaced it with the Git-tracked version check documented above.
 - Breeze website lander links were updated to this asset and deployed to the verified `breezebrowser` Netlify site. No Breeze Cloud Worker files changed.
 
 ## September 24 direct-download release 0.1.6
