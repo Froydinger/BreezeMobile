@@ -77,6 +77,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import com.froydinger.breeze.core.*
 import com.froydinger.breeze.ui.*
+import com.froydinger.breeze.updates.AndroidUpdate
+import com.froydinger.breeze.updates.AndroidUpdateChecker
 import android.webkit.*
 import android.graphics.Canvas
 import android.graphics.Bitmap
@@ -363,8 +365,13 @@ private fun pictureInPictureParams(context: android.content.Context, state: Brow
     val context = LocalContext.current
     val onboardingPreferences = remember(context) { context.getSharedPreferences("breeze_onboarding", android.content.Context.MODE_PRIVATE) }
     var showOnboarding by remember(onboardingPreferences) { mutableStateOf(!onboardingPreferences.getBoolean("complete", false)) }
-    var showDevUpdatePrompt by remember { mutableStateOf(BuildConfig.DEBUG) }
+    var availableUpdate by remember { mutableStateOf<AndroidUpdate?>(null) }
     LaunchedEffect(activity, dark) { activity?.let { AppIconManager.applyTheme(it, dark) } }
+    LaunchedEffect(activity, state.ready) {
+        if (state.ready && activity != null) {
+            availableUpdate = AndroidUpdateChecker.check(context)
+        }
+    }
     val selectedForPip = state.selected
     LaunchedEffect(activity, state.selectedId, state.screen, selectedForPip?.videoPlaying,
         selectedForPip?.videoWidth, selectedForPip?.videoHeight, state.pictureInPictureSourceRect) {
@@ -654,14 +661,21 @@ private fun pictureInPictureParams(context: android.content.Context, state: Brow
                 onboardingPreferences.edit().putBoolean("complete", true).apply()
                 showOnboarding = false
             }
-            if (showDevUpdatePrompt && BuildConfig.DEBUG && state.ready && !showOnboarding && !state.isPictureInPicture) {
-                DebugUpdatePrompt(
-                    onDismiss = { showDevUpdatePrompt = false },
+            availableUpdate?.takeIf {
+                state.ready && !showOnboarding && !state.showCloudDisclosure && !state.isPictureInPicture
+            }?.let { update ->
+                AndroidUpdatePrompt(
+                    update = update,
+                    onDismiss = {
+                        AndroidUpdateChecker.dismiss(context, update.tag)
+                        availableUpdate = null
+                    },
                     onDownload = {
-                        showDevUpdatePrompt = false
-                        state.notice = if (enqueueTestUpdateDownload(context)) {
+                        AndroidUpdateChecker.dismiss(context, update.tag)
+                        availableUpdate = null
+                        state.notice = if (enqueueAndroidUpdateDownload(context, update)) {
                             "Breeze update download started. Tap the Android download notification to install it."
-                        } else "Breeze could not start the update download. Try again from Breeze Dev."
+                        } else "Breeze could not start the update download. Try again later."
                     },
                 )
             }

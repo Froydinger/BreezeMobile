@@ -12,10 +12,11 @@ Keep the live lander pointed at the latest published signed APK until the next s
 
 1. Update `versionCode` and `versionName` in `app/build.gradle.kts`. Keep the Android signing identity and production credentials outside Git.
 2. Build and sign the arm64 APK using the configured release signing setup. Verify the APK signature and SHA-256 before publishing.
-3. Create a versioned GitHub release in this repository and attach the signed APK. Keep the asset name and version label consistent.
-4. Install that exact APK over the existing Pixel app and confirm the installed version and data preservation. Do not uninstall for routine updates.
-5. In the website repository, update the APK URL and version label in `mobile/index.html` and every matching Android download/structured-data URL in `index.html`. Deploy using its established website workflow.
-6. Open the live `/mobile/` page and download the linked APK once to verify the public path.
+3. Create a versioned GitHub release in this repository and attach the signed APK. Keep the asset name and version label consistent; put `Android-Version-Code: <number>` in the release notes for traceability.
+4. After the release asset is live, update `update/latest.json` on `main` with that release's version code, version name, tag, APK filename, and exact GitHub download URL. The Android app refreshes this public manifest at cold launch at most every 12 hours (failed fetches retry hourly), and offers the APK only when its version code is higher.
+5. Install that exact APK over the existing Pixel app and confirm the installed version and data preservation. Do not uninstall for routine updates.
+6. In the website repository, update the APK URL and version label in `mobile/index.html` and every matching Android download/structured-data URL in `index.html`. Deploy using its established website workflow.
+7. Open the live `/mobile/` page and download the linked APK once to verify the public path.
 
 Worker changes are separate. Test and deploy the Worker from `breezebrowser-live` before relying on new API behavior; do not bundle a Worker deploy into an Android release by assumption.
 
