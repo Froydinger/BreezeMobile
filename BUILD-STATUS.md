@@ -1,5 +1,16 @@
 # Android development status
 
+## September 24 installed beta and remaining checks
+
+- Pixel regular app is `com.froydinger.breeze`, versionCode 6 / versionName 0.1.5. Its installed `base.apk` SHA-256 is `a33951967c8300013e0e3adb8b9c357c9f391c594037fc0ef502ba3ba261f9c0`, exactly matching the signed GitHub release asset `Breeze-Android-0.1.5-beta.1-arm64.apk`. The installed binary is current for the Android source at commit `8127b5d`.
+- The Pixel also has a separate older development install, `com.froydinger.breeze.dev`, versionCode 5 / versionName 0.1.4-dev.
+- The only GitHub commit ahead of the old monorepo checkout changes desktop files; it does not change Android. Android source is now maintained in the separate `BreezeMobile` repository.
+- Checked-in automated tests currently cover the reminder request parser only. Existing QA records cover specific emulator flows, not full feature coverage.
+- Still lacking equivalent end-to-end checks: importing real bookmark/password exports; microphone and location permission flows; website password autofill; reminder notification timing/recurrence; picture-in-picture and external app handoff; and broad physical-device/site coverage.
+- Current local-only Worker edits in the old monorepo have not been tested or deployed. The installed APK continues using the live Worker and has not been changed by those edits.
+
+No broader release readiness is implied by the checks above.
+
 ## September 23 verification
 
 - The existing Breeze Cloud chat Worker serves the mobile response route. Deployed version: `6ec70490-4311-404f-ac9a-ab90f2cef16c`; configured model: `gpt-6-luna` with web search.

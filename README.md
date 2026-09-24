@@ -1,19 +1,19 @@
 # Breeze Android
 
-Native Kotlin/Compose browser with GeckoView. This is a private development build, not a Play release candidate.
+Native Kotlin/Compose browser using Android System WebView (Chromium) for web pages. The current signed download is the direct-release beta, not a Google Play release.
 
 ## Current scope
 
 - Ask-first routing, browser navigation, tabs and private tabs, local history, bookmarks, and saved chats.
 - Dark and light themes, configurable glass surfaces, wallpapers, tab wall, and local settings.
 - Android Keystore encrypted app records and a separate device-authenticated local password vault.
-- Gecko tracking protection, site dialogs and file inputs, find and desktop-site controls, and SAF downloads.
-- Existing Breeze Cloud chat Worker supports mobile chat, research, fact-check, summarize, and YouTube tasks. Deployed Worker version: `6ec70490-4311-404f-ac9a-ab90f2cef16c`; configured model: `gpt-6-luna` with web search.
+- Chromium page protection, site dialogs and file inputs, find and desktop-site controls, and SAF downloads.
+- Breeze Cloud chat, research, fact-check, summarize, and YouTube tasks use the mobile endpoint maintained in [`Froydinger/breezebrowser-live`](https://github.com/Froydinger/breezebrowser-live/tree/native-swift-browser/cloudflare/breeze-chat-worker). Keep its request/SSE contract in sync with `NavSseClient.kt` and `cloud/MOBILE-RESPONSES.md`.
 - **Cloud sync — Coming soon.** There is no account creation or cloud-sync connection in this build. Local password storage does not upload credentials.
 
 ## Build
 
-Requires JDK 17, SDK platform 37.1, build tools 36, and the checked-in Gradle wrapper. Target SDK is 36; newer compile SDK is required by current GeckoView. Development packaging currently targets arm64 devices such as the connected Pixel.
+Requires JDK 17, SDK platform 37.1, build tools 36, and the checked-in Gradle wrapper. Target SDK is 36. Packaging currently targets arm64 devices.
 
 ```sh
 JAVA_HOME=/opt/homebrew/opt/openjdk@17 \
@@ -21,7 +21,7 @@ ANDROID_HOME=/opt/homebrew/share/android-sdk \
 ./gradlew :app:assembleDebug
 ```
 
-Debug builds read the existing local `.breeze-client-token` without printing it. It is embedded only in the private development APK. **Do not redistribute this APK or upload it to Play.** Release builds do not include that credential; production authorization and attestation remain release requirements. No provider API key is stored in the app.
+Debug and release builds read an ignored root `.breeze-client-token` or `BREEZE_CLIENT_TOKEN`. Never commit or print this credential. The current beta embeds a shared Worker client token in the APK, so it is extractable and is only a transitional beta authorization scheme; it is not account authentication. Replace that scheme before broader production distribution. No provider API key is stored in the app. Use [RELEASE.md](RELEASE.md) for the signed APK and website handoff.
 
 Install with `adb -s DEVICE install -r app/build/outputs/apk/debug/app-debug.apk`. The development package is `com.froydinger.breeze.dev`, separate from a future production package.
 
@@ -29,7 +29,7 @@ Install with `adb -s DEVICE install -r app/build/outputs/apk/debug/app-debug.apk
 
 Five live Worker checks for chat, research, fact-check, summarize, and YouTube completed successfully; results are recorded in [cloud-results.json](qa/cloud-results.json). Emulator checks also covered conversational chat, clickable research citations and source links, page summarization using rendered text from example.com, and the keyboard-visible chat composer. Theme and screen captures are in [qa/screenshots](qa/screenshots).
 
-Independent visual review passed the revised reference screens (see `qa/VISUAL-REVIEW.md`). The reviewed build was installed and opened on the Pixel; functional interaction evidence is from the emulator unless explicitly stated in BUILD-STATUS.md. These checks cover the described flows, not every feature or device configuration. The private debug credential makes this APK unsuitable for public distribution or Play release.
+Independent visual review passed the revised reference screens (see `qa/VISUAL-REVIEW.md`). Functional interaction evidence is from the emulator unless explicitly stated in [BUILD-STATUS.md](BUILD-STATUS.md). These checks cover the described flows, not every feature or device configuration.
 
 Website passkey provider authorization remains a release requirement; there is no passkey toggle claiming that provider setup is complete. The local password vault uses encrypted device storage and system authentication. The temporary encrypted JSON app store must become transactional indexed storage before large-history scaling or sync.
 
@@ -40,5 +40,7 @@ Website passkey provider authorization remains a release requirement; there is n
 - `data/`: encrypted records and separate auth-bound vault.
 - `cloud/`: bounded HTTPS SSE protocol client.
 - `deferred/desktop/`: future Swift sync wire format; excluded from desktop build.
-- `../cloudflare/breeze-chat-worker/MOBILE-RESPONSES.md`: mobile route and protocol notes.
-- `../android-design/`: approved references and plan with subsequent scope amendments.
+- [`RELEASE.md`](RELEASE.md): release steps and the website/Worker handoff.
+- [`cloud/MOBILE-RESPONSES.md`](cloud/MOBILE-RESPONSES.md): the mobile route and protocol contract copied into this repo for app-side context; the Worker implementation remains in `breezebrowser-live`.
+- `qa/`: emulator captures, test records, and bounded visual/performance reviews.
+- `design-assets/`: app iconography and visual resources.

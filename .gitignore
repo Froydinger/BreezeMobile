@@ -4,5 +4,6 @@
 local.properties
 *.jks
 *.keystore
+.breeze-client-token
 
 qa/avd/

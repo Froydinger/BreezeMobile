@@ -16,17 +16,17 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".dev"; versionNameSuffix = "-dev"
-            val tokenFile = rootProject.file("../cloudflare/breeze-chat-worker/.breeze-client-token")
-            val token = if (tokenFile.exists()) tokenFile.readText().trim() else ""
+            val token = providers.environmentVariable("BREEZE_CLIENT_TOKEN").orNull
+                ?: rootProject.file(".breeze-client-token").takeIf { it.isFile }?.readText()?.trim().orEmpty()
             require(token.matches(Regex("[A-Za-z0-9._~+/=-]*"))) { "Invalid local development credential format" }
             buildConfigField("String", "CLOUD_TOKEN", "\"$token\"")
             buildConfigField("String", "CLOUD_URL", "\"https://breeze-chat.jakefroydinger.workers.dev/v1/mobile/responses\"")
         }
         release {
             isMinifyEnabled = false
-            val tokenFile = rootProject.file("../cloudflare/breeze-chat-worker/.breeze-client-token")
-            require(tokenFile.exists()) { "Local Breeze Cloud client credential required for release" }
-            val token = tokenFile.readText().trim()
+            val token = providers.environmentVariable("BREEZE_CLIENT_TOKEN").orNull
+                ?: rootProject.file(".breeze-client-token").takeIf { it.isFile }?.readText()?.trim().orEmpty()
+            require(token.isNotEmpty()) { "Local Breeze Cloud client credential required for release" }
             require(token.matches(Regex("[A-Za-z0-9._~+/=-]+"))) { "Invalid local client credential format" }
             buildConfigField("String", "CLOUD_TOKEN", "\"$token\"")
             buildConfigField("String", "CLOUD_URL", "\"https://breeze-chat.jakefroydinger.workers.dev/v1/mobile/responses\"")
