@@ -14,9 +14,9 @@ Keep the live lander pointed at the latest published signed APK until the next s
 2. Build and sign the arm64 APK using the configured release signing setup. Verify the APK signature and SHA-256 before publishing.
 3. Create a versioned GitHub release in this repository and attach the signed APK. Keep the asset name and version label consistent; put `Android-Version-Code: <number>` in the release notes for traceability.
 4. After the release asset is live, update `update/latest.json` on `main` with that release's version code, version name, tag, APK filename, and exact GitHub download URL. The Android app refreshes this public manifest at cold launch at most every 12 hours (failed fetches retry hourly), and offers the APK only when its version code is higher.
-5. Install that exact APK over the existing Pixel app and confirm the installed version and data preservation. Do not uninstall for routine updates.
-6. In the website repository, update the APK URL and version label in `mobile/index.html` and every matching Android download/structured-data URL in `index.html`. Deploy using its established website workflow.
-7. Open the live `/mobile/` page and download the linked APK once to verify the public path.
+5. Test device changes in Breeze Dev. Do not install a release over production Breeze on the Pixel; the user updates production through the in-app update flow.
+6. In the website repository, update the APK URL and version label in `mobile/index.html` and every matching Android download/structured-data URL in `index.html`. Deploy to the verified Netlify project `breezebrowser` (site ID `bb1061f6-da1e-47b4-b274-039cab2281e8`) explicitly; verify the project and domain before deploying.
+7. Open the live `/mobile/` page and verify the current version and linked APK URL.
 
 Worker changes are separate. Test and deploy the Worker from `breezebrowser-live` before relying on new API behavior; do not bundle a Worker deploy into an Android release by assumption.
 

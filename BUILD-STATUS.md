@@ -1,5 +1,15 @@
 # Android development status
 
+## September 24 direct-download release 0.1.9
+
+- Published signed release [`Breeze-Android-0.1.9-beta.1-arm64.apk`](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.9-beta.1/Breeze-Android-0.1.9-beta.1-arm64.apk) at [GitHub release android-v0.1.9-beta.1](https://github.com/Froydinger/BreezeMobile/releases/tag/android-v0.1.9-beta.1), versionCode 10. SHA-256: `16f99a7c6c1f1a7504e869ea5b772597c16ca92ec192c1c8d11e68a68db2c73a`. Signature fingerprint matches the existing production signer: `8448bcee588513337474ea4ae5f098fdbf35db3644ad6abd01d93be28561c628`.
+- Changes: the active-page URL bar is flatter with teal URL text; theme-specific launcher icons hand off through a stable entry activity so theme changes keep the browser open.
+- Build checks passed: `:app:testDebugUnitTest`, `:app:assembleDebug`, `:app:assembleRelease`, APK alignment, and signature verification. This is not exhaustive feature testing.
+- Breeze Dev was updated in place on Pixel 11 to versionCode 10 / versionName 0.1.9-dev. Switching Light → Dark kept process PID 23283 and `MainActivity` resumed. The production `com.froydinger.breeze` app remains at 0.1.8; it was not installed or modified.
+- The public update manifest now points to 0.1.9 at [`update/latest.json`](https://raw.githubusercontent.com/Froydinger/BreezeMobile/main/update/latest.json). Its release asset returned HTTP 200. The existing app checks the manifest at cold launch and caches successful checks for up to 12 hours.
+- The Android lander links now point to 0.1.9. Website commit: `Froydinger/breezebrowser` `1dca07c`; Netlify production deploy: `6ab5ca6927a4291215df9d44` on `breezebrowser`. Both [breeze.froydinger.design/mobile](https://breeze.froydinger.design/mobile/) and [breeze.froydingermedia.online/mobile](https://breeze.froydingermedia.online/mobile/) returned HTTP 200 with the 0.1.9 APK link.
+- The PWA install flow is still shortcut-based and is deliberately deferred to the next app update. No Breeze Cloud Worker files changed.
+
 ## September 24 direct-download release 0.1.8
 
 - Published signed release [`Breeze-Android-0.1.8-beta.1-arm64.apk`](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.8-beta.1/Breeze-Android-0.1.8-beta.1-arm64.apk) at [GitHub release android-v0.1.8-beta.1](https://github.com/Froydinger/BreezeMobile/releases/tag/android-v0.1.8-beta.1). SHA-256: `d24175196c8de7cdb81341955945d94b32329ba20ac1be185c39f5d75eb072fe`. APK signature fingerprint matches the existing production signer: `8448bcee588513337474ea4ae5f098fdbf35db3644ad6abd01d93be28561c628`.
