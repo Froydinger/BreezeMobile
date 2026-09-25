@@ -5,8 +5,10 @@
 - Published signed release [`Breeze-Android-0.1.13-beta.1-arm64.apk`](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.13-beta.1/Breeze-Android-0.1.13-beta.1-arm64.apk) at [GitHub release android-v0.1.13-beta.1](https://github.com/Froydinger/BreezeMobile/releases/tag/android-v0.1.13-beta.1), versionCode 14. SHA-256: `0ad15a65a75987f03647a9d5fe0343497f0c69ebf2434ae0cdd77e8601310bf1`. Alignment and v3 signing passed; the signing fingerprint matches the existing production identity.
 - Fixes Nav page actions so the selected page URL and rendered text are sent as attached context, while the visible chat bubble contains only the action. Adds distinct default requests and titles for Research, Summarize, Fact check, and YouTube.
 - Verified on Pixel 11 in Breeze Dev against a Genuine Good article: Summarize returned article-specific content; Research and Fact check completed, with Fact check showing a clickable source. `:app:testDebugUnitTest`, debug/release assembly, release lint, and `git diff --check` passed.
-- Breeze Dev is installed on Pixel 11 at versionCode 14 / versionName 0.1.13-dev. Main Breeze remains versionCode 13 / versionName 0.1.12 and was not installed over or modified. The update manifest and download lander are being updated to offer 0.1.13 to Main Breeze.
-- Android source commit: `7202951`. The mobile Cloudflare Worker was not changed.
+- Breeze Dev is installed on Pixel 11 at versionCode 14 / versionName 0.1.13-dev. Main Breeze remains versionCode 13 / versionName 0.1.12 and was not installed over or modified.
+- Android source commit: `7202951`; update manifest commit: `b56ed7e`. The public manifest returns versionCode 14 / version 0.1.13, and its APK URL returned HTTP 200 with the expected 238,713,738-byte asset.
+- Android lander commit: `Froydinger/breezebrowser` `2084600`; production deploy `6ab6203a6b93b299f7da3b29` went to the verified `breezebrowser` Netlify site. Both [breeze.froydinger.design/mobile](https://breeze.froydinger.design/mobile/) and [breeze.froydingermedia.online/mobile](https://breeze.froydingermedia.online/mobile/) return the 0.1.13 version label and APK link.
+- The mobile Cloudflare Worker was not changed.
 
 ## September 25 direct-download release 0.1.12
 
