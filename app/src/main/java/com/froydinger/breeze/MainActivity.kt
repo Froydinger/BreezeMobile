@@ -332,6 +332,32 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     override fun onDestroy() { chromiumCredentials?.close(); browser.chromiumCredentials = null; browser.releaseChromiumViewsForActivityDestroy(); browser.setChromiumViewFactory(null); browser.setPrivateProfileCleaner(null); unregisterReceiver(pipPlaybackReceiver); chromiumPrompts?.close(); chromiumDownloads?.close(); browserPrompts?.close(); browserCredentials?.close(); browserPermissions?.close(); browser.attachCredentials(null); browser.promptDelegate = null; browser.permissionDelegate = null; browser.downloadHandler = null; super.onDestroy() }
 }
 
+/** Read a page selection before Nav overlays the WebView, then attach it to that conversation. */
+private fun openNavFromBrowser(state: BrowserState) {
+    val tab = state.selected
+    val webView = tab?.chromiumView
+    if (tab == null || webView == null || tab.private || tab.url.isBlank()) {
+        state.openNav()
+        return
+    }
+    val tabId = tab.id
+    val selectionProbe = "(function(){var s=window.getSelection();if(!s||s.isCollapsed)return '';var n=s.anchorNode;var e=n?(n.nodeType===1?n:n.parentElement):null;if(e&&e.closest&&e.closest('input,textarea,[contenteditable=true],[role=textbox]'))return '';return s.toString();})()"
+    runCatching {
+        webView.evaluateJavascript(selectionProbe) { encoded ->
+            val selectedText = runCatching {
+                org.json.JSONTokener(encoded ?: "null").nextValue() as? String
+            }.getOrNull().orEmpty()
+            if (state.selectedId == tabId && state.screen == "browser") {
+                state.openNavWithSelectedText(selectedText)
+            } else {
+                state.openNav()
+            }
+        }
+    }.onFailure {
+        state.openNav()
+    }
+}
+
 private data class BrowserPageMorph(
     val source: Rect,
     val target: Rect?,
@@ -862,7 +888,7 @@ private fun pictureInPictureParams(context: android.content.Context, state: Brow
                             .semantics { contentDescription = "Open Nav" }
                             .clickable {
                                 view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
-                                if (state.isHomePage) state.startStandaloneNavChat() else state.openNav()
+                if (state.isHomePage) state.startStandaloneNavChat() else openNavFromBrowser(state)
                             },
                         contentAlignment = Alignment.Center,
                     ) { NavMark(navSize, glowing = state.activeChat?.running == true) }

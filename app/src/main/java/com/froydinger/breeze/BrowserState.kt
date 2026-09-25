@@ -1177,6 +1177,22 @@ class BrowserState(private val app: Application) {
         navInputFocusRequested = true
     }
 
+    /** Open Nav from a page selection and ask about the selected passage in the attached chat. */
+    fun openNavWithSelectedText(selectedText: String) {
+        if (selected?.private == true) {
+            openNav()
+            return
+        }
+        openNav()
+        val excerpt = selectedText.trim().take(6000)
+        if (excerpt.isBlank() || screen != "chat") return
+        if (activeChat?.running == true) {
+            notice = "Nav is still answering. Try the selected text again when it’s done."
+            return
+        }
+        sendChat("Explain this selected text from the current page:\n\n$excerpt")
+    }
+
     fun consumeNavInputFocusRequest() { navInputFocusRequested = false }
 
     /** Open a response link while keeping the same conversation attached in the browser tray. */

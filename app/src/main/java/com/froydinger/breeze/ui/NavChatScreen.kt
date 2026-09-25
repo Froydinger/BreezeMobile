@@ -146,6 +146,16 @@ fun NavChatScreen(state: BrowserState, modifier: Modifier = Modifier) {
     val panel = if (dark) Color.Black else Color(0xFFF8F8F7)
     val faintBorder = MaterialTheme.colorScheme.onSurface.copy(alpha = if (dark) .13f else .16f)
     val contextTab = state.contextTab
+    val quickContextTab = contextTab?.takeIf { state.includePageContext && it.url.startsWith("http") }
+    val quickActions = buildList {
+        if (quickContextTab != null) {
+            if (state.isYouTubeVideo(quickContextTab.url)) add(chatTools.first { it.slug == NavTask.YOUTUBE.slug })
+            add(chatTools.first { it.slug == NavTask.RESEARCH.slug })
+            add(chatTools.first { it.slug == NavTask.SUMMARIZE.slug })
+            add(chatTools.first { it.slug == NavTask.FACTCHECK.slug })
+        }
+        add(chatTools.first { it.localReminder })
+    }
     val requestRunning = chat?.running == true
     val systemAnimationsEnabled = remember { ValueAnimator.areAnimatorsEnabled() }
     val composerGlow = remember { Animatable(0f) }
@@ -268,28 +278,26 @@ fun NavChatScreen(state: BrowserState, modifier: Modifier = Modifier) {
             }
         }
 
-        val shouldSuggestCreatorBreakdown = contextTab != null && state.isYouTubeVideo(contextTab.url) &&
-            chat?.messages?.none { it.first == "user" && it.second.trimStart().startsWith("/youtube", ignoreCase = true) } != false
-        if (shouldSuggestCreatorBreakdown) {
-            Surface(
-                onClick = {
-                    selectedTool = chatTools.first { it.slug == NavTask.YOUTUBE.slug }
-                    if (chat == null) state.startChat("/youtube ${contextTab?.url.orEmpty()}" )
-                    else state.sendChat("/youtube ${contextTab?.url.orEmpty()}")
-                },
-                modifier = Modifier.fillMaxWidth(),
-                color = navAccent.copy(alpha = if (dark) .12f else .09f),
-                shape = RoundedCornerShape(18.dp),
-                border = BorderStroke(1.dp, navAccent.copy(alpha = .34f)),
-            ) {
-                Row(Modifier.padding(horizontal = 15.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(BreezeIcons.Youtube, contentDescription = null, modifier = Modifier.size(20.dp), tint = navAccent)
-                    Spacer(Modifier.width(11.dp))
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("YouTube creator breakdown", style = MaterialTheme.typography.labelLarge)
-                        Text("Read available captions and see why it works", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        val openQuickAction: (ChatTool) -> Unit = { tool ->
+            selectedTool = tool
+            keyboardController?.hide()
+            if (tool.localReminder) {
+                reminderDraft = ""
+                reminderDraftDueAt = null
+                reminderComposerCameFromChat = false
+                showReminderComposer = true
+            } else {
+                val pageUrl = quickContextTab?.url.orEmpty()
+                if (pageUrl.isNotBlank()) {
+                    state.includePageContext = true
+                    val followUp = when (tool.slug) {
+                        NavTask.YOUTUBE.slug -> "After the creator breakdown, ask if I need anything else."
+                        NavTask.SUMMARIZE.slug -> "After the summary, ask if I need anything else."
+                        NavTask.FACTCHECK.slug -> "After the fact check, ask if I need anything else."
+                        else -> "After the research, ask if I need anything else."
                     }
-                    Icon(BreezeIcons.ChevronRight, contentDescription = "Run creator breakdown", modifier = Modifier.size(20.dp), tint = navAccent)
+                    val prompt = "/${tool.slug} $pageUrl\n$followUp"
+                    if (state.activeChat == null) state.startChat(prompt) else state.sendChat(prompt)
                 }
             }
         }
@@ -302,11 +310,29 @@ fun NavChatScreen(state: BrowserState, modifier: Modifier = Modifier) {
         ) {
             if (chat == null || chat.messages.isEmpty()) {
                 item {
-                    AnimatedVisibility(visible = true, enter = fadeIn(tween(durationMillis = 220))) {
-                        Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.Top) {
-                            NavMark(27.dp)
-                            Spacer(Modifier.width(14.dp))
-                            Text("What can I help you with?", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 2.dp))
+                    Column(
+                        Modifier.fillMaxWidth().padding(top = 7.dp),
+                        verticalArrangement = Arrangement.spacedBy(11.dp),
+                    ) {
+                        Text(
+                            if (quickContextTab != null) "Quick actions for this page" else "Quick actions",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        quickActions.chunked(2).forEach { rowTools ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                                rowTools.forEach { tool ->
+                                    QuickActionChip(
+                                        tool = tool,
+                                        accent = navAccent,
+                                        panel = panel,
+                                        border = faintBorder,
+                                        modifier = Modifier.weight(1f),
+                                        onClick = { openQuickAction(tool) },
+                                    )
+                                }
+                                if (rowTools.size == 1) Spacer(Modifier.weight(1f))
+                            }
                         }
                     }
                 }
@@ -619,6 +645,33 @@ fun NavChatScreen(state: BrowserState, modifier: Modifier = Modifier) {
             onNotificationsDenied = { state.notice = "Reminder saved, but Android notifications are off. Turn them on in Settings." },
             initialDueAt = reminderDraftDueAt,
         )
+    }
+}
+
+@Composable
+private fun QuickActionChip(
+    tool: ChatTool,
+    accent: Color,
+    panel: Color,
+    border: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 50.dp),
+        color = panel,
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, border),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(9.dp),
+        ) {
+            Icon(tool.icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = accent)
+            Text(tool.label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 
