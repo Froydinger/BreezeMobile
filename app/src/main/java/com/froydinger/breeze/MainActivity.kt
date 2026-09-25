@@ -80,6 +80,7 @@ import com.froydinger.breeze.core.*
 import com.froydinger.breeze.ui.*
 import com.froydinger.breeze.updates.AndroidUpdate
 import com.froydinger.breeze.updates.AndroidUpdateChecker
+import com.froydinger.breeze.updates.AndroidUpdateDownloads
 import android.webkit.*
 import android.graphics.Canvas
 import android.graphics.Bitmap
@@ -341,6 +342,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     override fun onStart() { super.onStart(); devFpsTracker?.start(); devFpsTracker?.watchPage(browser.selected?.session); if (!isInPictureInPictureMode) browser.setPictureInPictureMode(false); browser.onAppForegrounded() }
     override fun onResume() {
         super.onResume()
+        AndroidUpdateDownloads.refresh(this)
         browser.rescheduleReminders()
         browser.registerReminderPushIfAllowed()
         if (!isInPictureInPictureMode) {
@@ -426,9 +428,18 @@ private fun pictureInPictureParams(context: android.content.Context, state: Brow
     val onboardingPreferences = remember(context) { context.getSharedPreferences("breeze_onboarding", android.content.Context.MODE_PRIVATE) }
     var showOnboarding by remember(onboardingPreferences) { mutableStateOf(!onboardingPreferences.getBoolean("complete", false)) }
     var availableUpdate by remember { mutableStateOf<AndroidUpdate?>(null) }
+    val downloadedUpdate by AndroidUpdateDownloads.completed.collectAsState()
+    val failedUpdate by AndroidUpdateDownloads.failed.collectAsState()
     LaunchedEffect(activity, state.ready) {
         if (state.ready && activity != null) {
             availableUpdate = AndroidUpdateChecker.check(context)
+        }
+    }
+    LaunchedEffect(failedUpdate?.tag) {
+        failedUpdate?.let { failed ->
+            state.notice = "Breeze ${failed.versionName} couldn’t finish downloading. Try again."
+            availableUpdate = failed
+            AndroidUpdateDownloads.clearFailure(failed.tag)
         }
     }
     val selectedForPip = state.selected
@@ -735,11 +746,27 @@ private fun pictureInPictureParams(context: android.content.Context, state: Brow
                         availableUpdate = null
                     },
                     onDownload = {
-                        AndroidUpdateChecker.dismiss(context, update.tag)
-                        availableUpdate = null
-                        state.notice = if (enqueueAndroidUpdateDownload(context, update)) {
-                            "Breeze update download started. Tap the Android download notification to install it."
-                        } else "Breeze could not start the update download. Try again later."
+                        if (enqueueAndroidUpdateDownload(context, update)) {
+                            availableUpdate = null
+                            state.notice = "Downloading Breeze ${update.versionName}. We’ll let you know when it’s ready to install."
+                        } else {
+                            state.notice = "Breeze could not start the update download. Try again later."
+                        }
+                    },
+                )
+            }
+            downloadedUpdate?.takeIf {
+                state.ready && !showOnboarding && !state.showCloudDisclosure && !state.isPictureInPicture
+            }?.let { ready ->
+                AndroidUpdateReadyPrompt(
+                    ready = ready,
+                    onDismiss = { AndroidUpdateDownloads.dismissPrompt(ready.downloadId) },
+                    onOpenDownloads = {
+                        if (AndroidUpdateDownloads.openDownloads(context, ready.downloadId)) {
+                            AndroidUpdateDownloads.dismissPrompt(ready.downloadId)
+                        } else {
+                            state.notice = "Tap the Android download notification to install Breeze ${ready.update.versionName}."
+                        }
                     },
                 )
             }

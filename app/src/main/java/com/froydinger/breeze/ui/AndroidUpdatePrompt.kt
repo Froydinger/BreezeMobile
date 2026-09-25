@@ -1,9 +1,6 @@
 package com.froydinger.breeze.ui
 
-import android.app.DownloadManager
 import android.content.Context
-import android.net.Uri
-import android.os.Environment
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -16,6 +13,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.froydinger.breeze.updates.AndroidUpdate
+import com.froydinger.breeze.updates.AndroidUpdateDownloads
+import com.froydinger.breeze.updates.DownloadedAndroidUpdate
 
 @Composable
 fun AndroidUpdatePrompt(update: AndroidUpdate, onDismiss: () -> Unit, onDownload: () -> Unit) {
@@ -27,7 +26,7 @@ fun AndroidUpdatePrompt(update: AndroidUpdate, onDismiss: () -> Unit, onDownload
             Column {
                 Text("Breeze ${update.versionName} is ready to download.")
                 Spacer(Modifier.height(9.dp))
-                Text("After it downloads, tap the Android download notification to install the signed update.")
+                Text("Breeze will let you know when it’s ready. Android will ask you to confirm the installation.")
             }
         },
         confirmButton = { TextButton(onClick = onDownload) { Text("Download update") } },
@@ -35,16 +34,27 @@ fun AndroidUpdatePrompt(update: AndroidUpdate, onDismiss: () -> Unit, onDownload
     )
 }
 
-fun enqueueAndroidUpdateDownload(context: Context, update: AndroidUpdate): Boolean = runCatching {
-    val manager = context.getSystemService(DownloadManager::class.java)
-        ?: error("Android download service is unavailable")
-    val request = DownloadManager.Request(Uri.parse(update.apkUrl))
-        .setTitle("Breeze Android update")
-        .setDescription("Downloading Breeze ${update.versionName}")
-        .setMimeType("application/vnd.android.package-archive")
-        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-        .setAllowedOverMetered(true)
-        .setAllowedOverRoaming(false)
-        .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, update.apkFileName)
-    manager.enqueue(request)
-}.isSuccess
+@Composable
+fun AndroidUpdateReadyPrompt(
+    ready: DownloadedAndroidUpdate,
+    onDismiss: () -> Unit,
+    onOpenDownloads: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(BreezeIcons.Download, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+        title = { Text("Update downloaded") },
+        text = {
+            Column {
+                Text("Breeze ${ready.update.versionName} is ready to install.")
+                Spacer(Modifier.height(9.dp))
+                Text("Tap the Android download notification to install directly, or open Downloads and tap the APK. Android will ask you to confirm.")
+            }
+        },
+        confirmButton = { TextButton(onClick = onOpenDownloads) { Text("Open Downloads") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Later") } },
+    )
+}
+
+fun enqueueAndroidUpdateDownload(context: Context, update: AndroidUpdate): Boolean =
+    AndroidUpdateDownloads.enqueue(context, update)

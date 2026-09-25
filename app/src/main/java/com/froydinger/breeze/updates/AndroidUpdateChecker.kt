@@ -62,14 +62,23 @@ object AndroidUpdateChecker {
                 }
                 if (manifest != null) writeCached(prefs, manifest)
                 eligible(manifest, dismissedTag, currentVersionCode)
+                    ?.takeUnless { AndroidUpdateDownloads.isDownloading(context, it.tag) }
             } catch (_: Exception) {
                 eligible(cached, dismissedTag, currentVersionCode)
+                    ?.takeUnless { AndroidUpdateDownloads.isDownloading(context, it.tag) }
             }
         }
 
     fun dismiss(context: Context, tag: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString("dismissed_tag", tag).apply()
+    }
+
+    fun undismiss(context: Context, tag: String) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getString("dismissed_tag", null) == tag) {
+            prefs.edit().remove("dismissed_tag").apply()
+        }
     }
 
     private fun parseManifest(json: JSONObject): AndroidUpdate? {
