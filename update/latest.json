@@ -1,7 +1,7 @@
 {
-  "versionCode": 10,
-  "versionName": "0.1.9",
-  "tag": "android-v0.1.9-beta.1",
-  "apkFileName": "Breeze-Android-0.1.9-beta.1-arm64.apk",
-  "apkUrl": "https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.9-beta.1/Breeze-Android-0.1.9-beta.1-arm64.apk"
+  "versionCode": 12,
+  "versionName": "0.1.11",
+  "tag": "android-v0.1.11-beta.1",
+  "apkFileName": "Breeze-Android-0.1.11-beta.1-arm64.apk",
+  "apkUrl": "https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.11-beta.1/Breeze-Android-0.1.11-beta.1-arm64.apk"
 }
