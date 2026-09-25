@@ -6,8 +6,11 @@ import android.net.Uri
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import android.content.pm.PackageManager
+import android.content.pm.webapp.WebAppInstallRequest
+import android.content.pm.webapp.WebAppManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.os.Build
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -82,7 +85,8 @@ fun AddressPageTools(state: BrowserState, modifier: Modifier = Modifier) {
         uri.scheme in setOf("http", "https") && !uri.host.isNullOrBlank()
     }.getOrDefault(false)
     val canCreateHomeShortcut = validWebPage && page?.private != true
-    val isPwaInstallable = page?.webAppManifest?.optString("display", "browser") in setOf("standalone", "minimal-ui", "fullscreen")
+    val pwaManifestUrl = page?.webAppManifestUrl?.takeIf { it.isNotBlank() }
+    val isPwaInstallable = pwaManifestUrl != null
     val associatedAppTargets = remember(url, context.packageName) { findAssociatedAppTargets(context, url) }
     val hiddenItems = state.hiddenPageElements(url)
 
@@ -171,7 +175,8 @@ fun AddressPageTools(state: BrowserState, modifier: Modifier = Modifier) {
                 }
                 PageAction(if (isPwaInstallable) "Install app" else "Add to Home screen", BreezeIcons.Add, enabled = canCreateHomeShortcut) {
                     expanded = false
-                    shortcutScope.launch { requestHomeShortcut(context, state) }
+                    if (pwaManifestUrl != null) requestPwaInstall(context, state, pwaManifestUrl)
+                    else shortcutScope.launch { requestHomeShortcut(context, state) }
                 }
 
             }
@@ -312,6 +317,57 @@ private fun PageAction(label: String, icon: androidx.compose.ui.graphics.vector.
     )
 }
 
+private fun requestPwaInstall(context: android.content.Context, state: BrowserState, manifestUrl: String) {
+    val page = state.selected ?: return
+    if (page.private) {
+        state.notice = "Private pages can’t be installed as apps."
+        return
+    }
+    val title = page.webAppManifest?.optString("short_name")?.takeIf { it.isNotBlank() }
+        ?: page.webAppManifest?.optString("name")?.takeIf { it.isNotBlank() }
+        ?: page.title.ifBlank { Uri.parse(page.url).host.orEmpty() }
+    if (Build.VERSION.SDK_INT >= 37) {
+        val manager = runCatching { context.getSystemService(WebAppManager::class.java) }.getOrNull()
+        if (manager?.isAvailable == true) {
+            runCatching {
+                val request = WebAppInstallRequest.Builder(title, manifestUrl).build()
+                state.notice = "Opening Android’s app install confirmation…"
+                manager.install(request, context.mainExecutor) { _, result ->
+                    state.notice = when (result) {
+                        WebAppInstallRequest.RESULT_SUCCESS -> "$title was installed. Find it in your app drawer."
+                        WebAppInstallRequest.RESULT_CANCELLED_BY_USER -> "App installation canceled."
+                        WebAppInstallRequest.RESULT_PERMISSION_DENIED -> "Set Breeze as your default browser to install web apps."
+                        WebAppInstallRequest.RESULT_NETWORK_ERROR -> "Couldn’t load this app’s manifest. Check your connection and try again."
+                        WebAppInstallRequest.RESULT_SECURITY_ERROR -> "Android couldn’t verify this site’s app manifest."
+                        else -> "Android couldn’t install this app. Try again from the site menu."
+                    }
+                }
+            }.onFailure {
+                state.notice = "Android’s web app installer could not start."
+            }
+            return
+        }
+    }
+    openPwaInChrome(context, page.url, state)
+}
+
+private fun openPwaInChrome(context: android.content.Context, pageUrl: String, state: BrowserState) {
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(pageUrl))
+        .setPackage("com.android.chrome")
+        .addCategory(Intent.CATEGORY_BROWSABLE)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    if (runCatching { intent.resolveActivity(context.packageManager) }.getOrNull() == null) {
+        state.notice = "Direct PWA installation needs Android 17+. Open this page in Chrome and choose Install app."
+        return
+    }
+    runCatching {
+        context.startActivity(intent)
+        state.notice = "In Chrome, open the page menu and choose Install app for a full PWA."
+    }.onFailure {
+        state.notice = "Couldn’t open Chrome to install this web app."
+    }
+}
+
 private suspend fun requestHomeShortcut(context: android.content.Context, state: BrowserState) {
     val page = state.selected ?: return
     if (page.private) {
@@ -348,7 +404,7 @@ private suspend fun requestHomeShortcut(context: android.content.Context, state:
         .setIntent(intent)
         .build()
     state.notice = if (manager.requestPinShortcut(shortcut, null)) {
-        if (launchesStandalone) "PWA install shortcut requested." else "Home screen shortcut requested."
+        "Home screen shortcut requested."
     } else "Couldn’t request a Home screen shortcut."
 }
 

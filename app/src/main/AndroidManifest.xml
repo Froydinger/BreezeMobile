@@ -21,7 +21,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <application android:name=".BreezeApplication" android:theme="@style/Theme.Breeze" android:label="@string/app_name" android:icon="@mipmap/ic_launcher_classic_dark" android:roundIcon="@mipmap/ic_launcher_classic_dark" android:allowBackup="false" android:usesCleartextTraffic="false" android:supportsRtl="true" android:hardwareAccelerated="true">
-        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:supportsPictureInPicture="true" android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|uiMode">
+        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:taskAffinity="${applicationId}.browser" android:windowSoftInputMode="adjustResize" android:supportsPictureInPicture="true" android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|uiMode">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" /><category android:name="android.intent.category.BROWSABLE" />
@@ -34,7 +34,7 @@
             </intent-filter>
         </activity>
         <!-- Keep the launcher's theme-specific icon alias out of the browser task. -->
-        <activity android:name=".LauncherEntryActivity" android:exported="false" android:excludeFromRecents="true" android:noHistory="true" android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <activity android:name=".LauncherEntryActivity" android:exported="false" android:excludeFromRecents="true" android:noHistory="true" android:taskAffinity="${applicationId}.launcher" android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         <!-- Keep the Breeze launcher art consistent while matching the current appearance. -->
         <activity-alias android:name=".IconClassicDarkActivity" android:targetActivity=".LauncherEntryActivity" android:enabled="true" android:exported="true" android:icon="@mipmap/ic_launcher_classic_dark" android:roundIcon="@mipmap/ic_launcher_classic_dark" android:label="@string/app_name">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>

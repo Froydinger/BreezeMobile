@@ -322,6 +322,12 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     }
     override fun onStop() {
         devFpsTracker?.stop(); browser.onAppBackgrounded(); browser.persist(); super.onStop()
+        if (!isInPictureInPictureMode) AppIconManager.applyTheme(applicationContext, resolvedDarkAppearance())
+    }
+    private fun resolvedDarkAppearance(): Boolean = when (browser.theme) {
+        ThemeMode.DARK -> true
+        ThemeMode.LIGHT -> false
+        ThemeMode.SYSTEM -> (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
     }
     override fun onDestroy() { chromiumCredentials?.close(); browser.chromiumCredentials = null; browser.releaseChromiumViewsForActivityDestroy(); browser.setChromiumViewFactory(null); browser.setPrivateProfileCleaner(null); unregisterReceiver(pipPlaybackReceiver); chromiumPrompts?.close(); chromiumDownloads?.close(); browserPrompts?.close(); browserCredentials?.close(); browserPermissions?.close(); browser.attachCredentials(null); browser.promptDelegate = null; browser.permissionDelegate = null; browser.downloadHandler = null; super.onDestroy() }
 }
@@ -366,7 +372,6 @@ private fun pictureInPictureParams(context: android.content.Context, state: Brow
     val onboardingPreferences = remember(context) { context.getSharedPreferences("breeze_onboarding", android.content.Context.MODE_PRIVATE) }
     var showOnboarding by remember(onboardingPreferences) { mutableStateOf(!onboardingPreferences.getBoolean("complete", false)) }
     var availableUpdate by remember { mutableStateOf<AndroidUpdate?>(null) }
-    LaunchedEffect(activity, dark) { activity?.let { AppIconManager.applyTheme(it, dark) } }
     LaunchedEffect(activity, state.ready) {
         if (state.ready && activity != null) {
             availableUpdate = AndroidUpdateChecker.check(context)

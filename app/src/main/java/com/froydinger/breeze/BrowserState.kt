@@ -26,6 +26,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
+import org.json.JSONTokener
 import org.mozilla.geckoview.*
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -38,6 +39,10 @@ private const val MAX_HIDDEN_ELEMENTS_PER_SITE = 30
 private const val SESSION_STATE_MAX_CHARS = 1_500_000
 private const val BACKGROUND_SESSION_RETENTION_MS = 20 * 60 * 1000L
 private const val PRIVATE_WEB_PROFILE = "breeze-private"
+private fun safeWebAppManifestUrl(raw: String): String? = runCatching {
+    val uri = Uri.parse(raw)
+    raw.takeIf { it.length in 1..4096 && uri.scheme == "https" && !uri.host.isNullOrBlank() }
+}.getOrNull()
 private val HIDDEN_SELECTOR_PATTERN = Regex(
     "^[a-z][a-z0-9-]{0,63}(:nth-of-type\\([1-9][0-9]{0,4}\\))?(>[a-z][a-z0-9-]{0,63}(:nth-of-type\\([1-9][0-9]{0,4}\\))?){0,32}$",
 )
@@ -55,6 +60,8 @@ class LiveTab(val id: String = UUID.randomUUID().toString(), val private: Boolea
     var title by mutableStateOf("New tab")
     /** Parsed by GeckoView only when the active document exposes a valid Web App Manifest. */
     var webAppManifest by mutableStateOf<JSONObject?>(null)
+    /** Secure manifest URL reported by the top-level document for Android's PWA installer. */
+    var webAppManifestUrl by mutableStateOf<String?>(null)
     var loading by mutableStateOf(false)
     var canBack by mutableStateOf(false)
     var canForward by mutableStateOf(false)
@@ -236,7 +243,10 @@ class BrowserState(private val app: Application) {
                     }
                     if (!activePort.sender.isTopLevel || protectionKey(activePort.sender.url) != host) return
                     when (json.optString("type")) {
-                        "ready" -> sendElementRules(tab, "sync", pendingElementPicks.contains(session))
+                        "ready" -> {
+                            tab.webAppManifestUrl = safeWebAppManifestUrl(json.optString("manifestUrl"))
+                            sendElementRules(tab, "sync", pendingElementPicks.contains(session))
+                        }
                         "selected" -> {
                             val requestedHost = json.optString("host").lowercase().removePrefix("www.")
                             val selector = json.optString("selector")
@@ -783,6 +793,7 @@ class BrowserState(private val app: Application) {
         tab.chromiumPageLoadFailed = false
         if (tab.url != url) {
             tab.webAppManifest = null
+            tab.webAppManifestUrl = null
             clearRenderedText(tab)
             tab.videoPlaying = false
             tab.chromiumMediaPlaying = false
@@ -808,6 +819,7 @@ class BrowserState(private val app: Application) {
         tab.error = if (loaded) null else tab.error ?: "This page could not finish loading. Try reloading."
         syncChromiumNavigation(tab)
         if (loaded && isHttpPage(url)) {
+            captureWebAppManifestUrl(tab, view, url)
             if (tab.chromiumRestoreScrollAfterLoad) {
                 val restoreY = tab.scrollY
                 tab.chromiumRestoreScrollAfterLoad = false
@@ -823,6 +835,19 @@ class BrowserState(private val app: Application) {
                 }
             }
             persist()
+        }
+    }
+
+    private fun captureWebAppManifestUrl(tab: LiveTab, view: WebView, pageUrl: String) {
+        if (tab.private) {
+            tab.webAppManifestUrl = null
+            return
+        }
+        val probe = "(function(){var links=Array.prototype.slice.call(document.querySelectorAll('link[rel]'));for(var i=0;i<links.length;i++){if(links[i].relList&&links[i].relList.contains('manifest'))return links[i].href;}return '';})()"
+        view.evaluateJavascript(probe) { result ->
+            if (!isCurrentChromiumView(tab, view) || tab.url != pageUrl) return@evaluateJavascript
+            val rawUrl = runCatching { JSONTokener(result ?: "null").nextValue() as? String }.getOrNull().orEmpty()
+            tab.webAppManifestUrl = safeWebAppManifestUrl(rawUrl)
         }
     }
 
@@ -1022,7 +1047,13 @@ class BrowserState(private val app: Application) {
                 tab.savedSessionState = serialized?.takeIf { it.isNotBlank() && it.length <= SESSION_STATE_MAX_CHARS }
                 persist()
             }
-            override fun onPageStart(session: GeckoSession, url: String) { tab.loading = true; tab.error = null; clearRenderedText(tab) }
+            override fun onPageStart(session: GeckoSession, url: String) {
+                tab.webAppManifest = null
+                tab.webAppManifestUrl = null
+                tab.loading = true
+                tab.error = null
+                clearRenderedText(tab)
+            }
             override fun onPageStop(session: GeckoSession, success: Boolean) {
                 tab.loading = false
                 if (!success) tab.error = "This page could not finish loading. Try reloading."

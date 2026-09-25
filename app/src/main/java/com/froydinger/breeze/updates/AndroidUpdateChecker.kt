@@ -21,25 +21,15 @@ object AndroidUpdateChecker {
     private const val PREFS = "breeze_update_check"
     private const val MANIFEST_URL =
         "https://raw.githubusercontent.com/Froydinger/BreezeMobile/main/update/latest.json"
-    private const val CHECK_INTERVAL_MS = 12L * 60 * 60 * 1000
-    private const val FAILURE_RETRY_MS = 60L * 60 * 1000
     private const val TIMEOUT_MS = 6_000
     private const val MAX_MANIFEST_BYTES = 16_384
 
-    /** Refreshes the public Git-tracked release manifest twice daily; failed requests retry hourly. */
+    /** Checks the public Git-tracked release manifest at each app launch, using the cached release offline. */
     suspend fun check(context: Context, currentVersionCode: Int = com.froydinger.breeze.BuildConfig.VERSION_CODE): AndroidUpdate? =
         withContext(Dispatchers.IO) {
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            val now = System.currentTimeMillis()
             val cached = readCached(prefs)
-            val lastAttempt = prefs.getLong("last_attempt", 0L)
-            val interval = if (prefs.getBoolean("last_failed", false)) FAILURE_RETRY_MS else CHECK_INTERVAL_MS
-
-            if (now >= lastAttempt && now - lastAttempt < interval) {
-                return@withContext eligible(cached, prefs.getString("dismissed_tag", null), currentVersionCode)
-            }
-
-            prefs.edit().putLong("last_attempt", now).putBoolean("last_failed", true).apply()
+            val dismissedTag = prefs.getString("dismissed_tag", null)
             try {
                 val connection = (URL(MANIFEST_URL).openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
@@ -71,10 +61,9 @@ object AndroidUpdateChecker {
                     connection.disconnect()
                 }
                 if (manifest != null) writeCached(prefs, manifest)
-                prefs.edit().putLong("last_attempt", now).putBoolean("last_failed", false).apply()
-                eligible(manifest, prefs.getString("dismissed_tag", null), currentVersionCode)
+                eligible(manifest, dismissedTag, currentVersionCode)
             } catch (_: Exception) {
-                eligible(cached, prefs.getString("dismissed_tag", null), currentVersionCode)
+                eligible(cached, dismissedTag, currentVersionCode)
             }
         }
 

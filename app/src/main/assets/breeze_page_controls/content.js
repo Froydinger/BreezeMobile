@@ -328,6 +328,13 @@
     }
   });
   port.onDisconnect.addListener(() => { stopPicker(); setPipVideoMode(false, ""); });
-  port.postMessage({ type: "ready", host: location.hostname.toLowerCase(), topLevel: window.top === window });
+  const manifestLink = Array.from(document.querySelectorAll("link[rel]"))
+    .find(link => link.relList && link.relList.contains("manifest"));
+  port.postMessage({
+    type: "ready",
+    host: location.hostname.toLowerCase(),
+    topLevel: window.top === window,
+    manifestUrl: manifestLink ? manifestLink.href : "",
+  });
   setTimeout(sendVideoPlaybackState, 0);
 })();
