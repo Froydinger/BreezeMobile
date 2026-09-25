@@ -1,5 +1,15 @@
 # Android development status
 
+## September 25 direct-download release 0.1.12
+
+- Published signed release [`Breeze-Android-0.1.12-beta.1-arm64.apk`](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.12-beta.1/Breeze-Android-0.1.12-beta.1-arm64.apk) at [GitHub release android-v0.1.12-beta.1](https://github.com/Froydinger/BreezeMobile/releases/tag/android-v0.1.12-beta.1), versionCode 13. SHA-256: `78a1fb6317a8f31c8b14a41f6d13cd7df96f1b573bbc729155e26b5533da96b5`. APK alignment and v3 signing passed; the signing fingerprint matches the existing production identity.
+- Adds page-aware empty-chat quick actions in Nav, including Research, Summarize, Fact check, Reminder, and YouTube breakdown on YouTube videos. Selecting page text and opening Nav attaches that passage to the conversation.
+- The PWA install request uses Android `WebAppManager` when available and surfaces install failures inside Breeze. A real PWA install on the Pixel has not been verified end to end.
+- `:app:assembleRelease` and `:app:assembleDebug` passed. Breeze Dev was updated on Pixel 11 to versionCode 13 / versionName 0.1.12-dev; the Nav screen visibly showed Research, Summarize, Fact check, and Reminder for the attached ArcAI page. Production Breeze remains at versionCode 12 / versionName 0.1.11 and was not touched.
+- Android source commit: `e22df40`; update manifest commit: `17e9e39`. The public manifest now points to 0.1.12 and returned HTTP 200; the signed APK asset returned HTTP 200.
+- Android lander commit: `Froydinger/breezebrowser` `6b465a5`; production deploy: `6ab61125e02746065a1e7f51` on the verified `breezebrowser` Netlify site. Both [breeze.froydinger.design/mobile](https://breeze.froydinger.design/mobile/) and [breeze.froydingermedia.online/mobile](https://breeze.froydingermedia.online/mobile/) returned HTTP 200 with the 0.1.12 version label and APK link.
+- No Cloudflare Worker files changed. No emulator was started.
+
 ## September 24 direct-download release 0.1.11
 
 - Published signed release [`Breeze-Android-0.1.11-beta.1-arm64.apk`](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.11-beta.1/Breeze-Android-0.1.11-beta.1-arm64.apk) at [GitHub release android-v0.1.11-beta.1](https://github.com/Froydinger/BreezeMobile/releases/tag/android-v0.1.11-beta.1), versionCode 12. SHA-256: `dc6776246d8767cf96fe09228bfc95d77381ae9d2bdbeaacf098fdf375bc1251`. APK signature, alignment, and production signing fingerprint were checked.
