@@ -1,5 +1,18 @@
 # Android development status
 
+## September 25 update-flow test build 0.1.17
+
+- Published signed prerelease [Breeze-Android-0.1.17-beta.1-arm64.apk](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.17-beta.1/Breeze-Android-0.1.17-beta.1-arm64.apk), versionCode 18. This is a version-only test build with no feature changes. SHA-256: `7a256d15c7f6920b1b4c6b8c6c9b2992085e34bd22b964960bc371ff6dce1e04`. APK v3 signing and zip alignment passed; certificate matches the existing production signer.
+- The production app on Pixel 11 was updated in place to 0.1.16 / versionCode 17 and launched. After the public update manifest was advanced to 0.1.17 / versionCode 18, relaunching Breeze displayed the dismissible “Time to update” prompt. The prompt is left open for the user to test. The 0.1.17 APK has not yet been downloaded or installed on the device, so the download-completion prompt is still awaiting end-to-end confirmation.
+- The source changes are pushed at `1f22193`; the 0.1.16 release and manifest are at `android-v0.1.16-beta.1` / `94b0888`; the 0.1.17 test APK and manifest are at `android-v0.1.17-beta.1` / `707d2b5`. Build checks passed for `:app:testDebugUnitTest`, `:app:assembleDebug`, and `:app:assembleRelease` on 0.1.16, and `:app:assembleRelease` on the version-only 0.1.17 build.
+- The Android landing page and root Android links now point to 0.1.17. Website commit: `Froydinger/breezebrowser` `c803662`; production deploy: `6ab6eaa56ca4a219a1eb0741` on the verified `breezebrowser` Netlify site. The live mobile page and signed APK asset were checked.
+
+## September 25 direct-download update-flow release 0.1.16
+
+- Adds Download Manager completion tracking, a foreground “Update downloaded” prompt, retry handling on failure, and restoration if the download finishes while Breeze is closed. Android still requires the user to confirm installation.
+- Published signed APK [Breeze-Android-0.1.16-beta.1-arm64.apk](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.16-beta.1/Breeze-Android-0.1.16-beta.1-arm64.apk), versionCode 17. SHA-256: `922fd07a0f209b7f19c335af1b008ce2a8e9fca57c6b602d84692d50443cacd1`. APK v3 signing and zip alignment passed; certificate matches the production signer.
+- `:app:testDebugUnitTest`, `:app:assembleDebug`, and `:app:assembleRelease` passed. The signed 0.1.16 APK was installed in place over Pixel 11's production Breeze. App data was preserved.
+
 ## September 25 direct-download release 0.1.15
 
 - Published signed APK [Breeze-Android-0.1.15-beta.1-arm64.apk](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.15-beta.1/Breeze-Android-0.1.15-beta.1-arm64.apk) at [GitHub release android-v0.1.15-beta.1](https://github.com/Froydinger/BreezeMobile/releases/tag/android-v0.1.15-beta.1), versionCode 16. SHA-256: 04c3e448503443e7a275bc34de9c68ada9fca1d91beb5ad48f77a528baf63dc7. APK v3 signing was verified; its certificate matches the production signer used by the existing app.
