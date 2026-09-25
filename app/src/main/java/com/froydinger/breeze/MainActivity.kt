@@ -957,7 +957,7 @@ private data class AddressSuggestion(val title: String, val url: String)
         Box(
         Modifier.weight(1f)
             .then(if (home) Modifier else Modifier.offset(x = (-3).dp))
-            .breezeGlass(if (home) 32.dp else 100.dp)
+            .then(if (home) Modifier.breezeGlass(32.dp) else Modifier)
             .pointerInput(state.selectedId, home) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
@@ -1024,7 +1024,10 @@ private data class AddressSuggestion(val title: String, val url: String)
                         }
                     },
                     singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (editing || home) 1f else 0f)),
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        color = (if (home) MaterialTheme.colorScheme.onSurface else Color(0xFF087C89))
+                            .copy(alpha = if (editing || home) 1f else 0f),
+                    ),
                     cursorBrush = androidx.compose.ui.graphics.SolidColor(BreezeTeal),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
                     keyboardActions = KeyboardActions(onGo = { suggestionsOpen = false; keyboardController?.hide(); state.submit(text) }),
@@ -1036,7 +1039,7 @@ private data class AddressSuggestion(val title: String, val url: String)
                                 visible = !home && !editing && compactAddress.isNotBlank(),
                                 enter = fadeIn(tween(150)), exit = fadeOut(tween(120)),
                             ) {
-                                Text(compactAddress, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                                Text(compactAddress, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, color = Color(0xFF087C89))
                             }
                         }
                     },

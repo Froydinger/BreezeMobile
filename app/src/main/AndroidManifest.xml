@@ -33,11 +33,13 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+        <!-- Keep the launcher's theme-specific icon alias out of the browser task. -->
+        <activity android:name=".LauncherEntryActivity" android:exported="false" android:excludeFromRecents="true" android:noHistory="true" android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         <!-- Keep the Breeze launcher art consistent while matching the current appearance. -->
-        <activity-alias android:name=".IconClassicDarkActivity" android:targetActivity=".MainActivity" android:enabled="true" android:exported="true" android:icon="@mipmap/ic_launcher_classic_dark" android:roundIcon="@mipmap/ic_launcher_classic_dark" android:label="@string/app_name">
+        <activity-alias android:name=".IconClassicDarkActivity" android:targetActivity=".LauncherEntryActivity" android:enabled="true" android:exported="true" android:icon="@mipmap/ic_launcher_classic_dark" android:roundIcon="@mipmap/ic_launcher_classic_dark" android:label="@string/app_name">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
-        <activity-alias android:name=".IconClassicLightActivity" android:targetActivity=".MainActivity" android:enabled="false" android:exported="true" android:icon="@mipmap/ic_launcher_classic_light" android:roundIcon="@mipmap/ic_launcher_classic_light" android:label="@string/app_name">
+        <activity-alias android:name=".IconClassicLightActivity" android:targetActivity=".LauncherEntryActivity" android:enabled="false" android:exported="true" android:icon="@mipmap/ic_launcher_classic_light" android:roundIcon="@mipmap/ic_launcher_classic_light" android:label="@string/app_name">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
         <receiver android:name=".notifications.ReminderReceiver" android:enabled="true" android:exported="false">
