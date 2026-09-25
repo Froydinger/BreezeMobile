@@ -6,7 +6,8 @@
 - Adds a browser-side public-caption reader for YouTube Creator Breakdown. It reads YouTube's caption session in the active Chromium tab, sends up to 14,000 transcript characters as untrusted page context, and falls back honestly when captions cannot be read. No Cloudflare Worker files were changed or deployed.
 - Pixel 11 Breeze Dev was updated to versionCode 15 / versionName 0.1.14-dev. A live TED video Creator Breakdown used transcript-specific details and clickable sources. The 0.1.13 device checks already verified page Summarize, Research, and Fact-check on Pixel 11. Main Breeze was not installed over; it remains at versionCode 13 / versionName 0.1.12.
 - `:app:testDebugUnitTest`, `:app:assembleDebug`, and `:app:assembleRelease` passed. `git diff --check` passed. Full `:app:lintRelease` reports 13 existing errors in unchanged files (legacy API annotations, locale reads, activity casts, and camera feature declaration); this run did not modify those paths.
-- Android source commit: `0c9f7c8`. The update manifest and Android lander are being advanced to 0.1.14 as part of this release.
+- Android source commit: `0c9f7c8`; update manifest commit: `c7f119a`. Breeze Dev checks the manifest on each cold launch; Main Breeze version 0.1.12 / versionCode 13 is eligible for this update.
+- Android lander commit: `Froydinger/breezebrowser` `8a7bbcb`; production deploy `6ab62a624a87212c6fb14385` went to the verified `breezebrowser` Netlify site. Both [breeze.froydinger.design/mobile](https://breeze.froydinger.design/mobile/) and [breeze.froydingermedia.online/mobile](https://breeze.froydingermedia.online/mobile/) show 0.1.14 and link to the signed APK.
 
 ## September 25 direct-download release 0.1.13
 
