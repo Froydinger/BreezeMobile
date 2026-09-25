@@ -1,5 +1,14 @@
 # Android development status
 
+## September 25 direct-download release 0.1.15
+
+- Published signed APK [Breeze-Android-0.1.15-beta.1-arm64.apk](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.15-beta.1/Breeze-Android-0.1.15-beta.1-arm64.apk) at [GitHub release android-v0.1.15-beta.1](https://github.com/Froydinger/BreezeMobile/releases/tag/android-v0.1.15-beta.1), versionCode 16. SHA-256: 04c3e448503443e7a275bc34de9c68ada9fca1d91beb5ad48f77a528baf63dc7. APK v3 signing was verified; its certificate matches the production signer used by the existing app.
+- Adds optional Breeze accounts with Google/email sign-in, separate opt-in sync for bookmarks, tabs, history, chats, and reminders, account passkeys, account export/deletion, and in-app Privacy Policy and Terms. Website passwords stay in the local encrypted vault.
+- Nav now completes reminder setup in chat and asks follow-up questions only when date, time, or task details are missing. Local alarms remain available; when reminder sync and Android notifications are enabled, the Supabase minute scheduler can send an FCM alert containing only an opaque reminder ID and due time.
+- Supabase auth, passkey RP/origins, reminder tables, scheduler, and sender secrets are configured. The cron endpoint has returned HTTP 200 with no due reminders. No real push was sent during this release pass.
+- :app:testDebugUnitTest --rerun-tasks, :app:assembleDebug, and :app:assembleRelease passed. APK signature verification and git diff checks passed. Source commit: 292423c; updater manifest and lander publication are recorded below after their deployment checks.
+- No emulator was started and the Pixel was not touched while it was offline. Actual passkey enrollment, notification delivery, and the in-app update flow on the phone remain for the user's later device check.
+
 ## September 25 direct-download release 0.1.14
 
 - Published signed release [`Breeze-Android-0.1.14-beta.1-arm64.apk`](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.14-beta.1/Breeze-Android-0.1.14-beta.1-arm64.apk) at [GitHub release android-v0.1.14-beta.1](https://github.com/Froydinger/BreezeMobile/releases/tag/android-v0.1.14-beta.1), versionCode 15. SHA-256: `85debbedb03dbb187dac64fe17e4b0bf64a6daacdef05bf1339ea84a10beaabe`. APK alignment and v3 signing passed; signer fingerprint matches the production signing identity.
