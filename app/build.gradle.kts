@@ -11,8 +11,8 @@ android {
         minSdk = 29
         targetSdk = 36
         ndk { abiFilters += "arm64-v8a" }
-        versionCode = 17
-        versionName = "0.1.16"
+        versionCode = 18
+        versionName = "0.1.17"
         val supabaseKey = providers.environmentVariable("SUPABASE_ANON_KEY").orNull
             ?: rootProject.file(".supabase-anon-key").takeIf { it.isFile }?.readText()?.trim().orEmpty()
         require(supabaseKey.matches(Regex("[A-Za-z0-9._~-]*"))) { "Invalid Supabase public key format" }
