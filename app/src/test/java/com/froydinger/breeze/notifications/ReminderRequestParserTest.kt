@@ -23,12 +23,23 @@ class ReminderRequestParserTest {
     }
 
     @Test
-    fun tomorrowWithoutTimeKeepsTomorrowInTheReminderComposer() {
-        val dueAt = ReminderRequestParser.suggestedDueAt("Remind me to buy eggs tomorrow", now)
-        assertNotNull(dueAt)
-        val due = ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(dueAt!!), zone)
-        assertEquals(LocalDate.of(2026, 9, 24), due.toLocalDate())
-        assertEquals(LocalTime.of(15, 0), due.toLocalTime())
+    fun missingReminderDetailsAreAskedInChatAndCanBeProvidedInFollowUp() {
+        val initial = "Remind me to buy eggs"
+        assertEquals("When should I remind you to buy eggs?", ReminderRequestParser.missingDetailQuestion(initial))
+
+        val completed = ReminderRequestParser.appendFollowUp(initial, "tomorrow at 3pm")
+        val reminder = ReminderRequestParser.parse(completed, now)
+        assertNotNull(reminder)
+        assertEquals("buy eggs", reminder!!.title)
+        assertEquals("What time should I remind you to buy eggs?", ReminderRequestParser.missingDetailQuestion("Remind me to buy eggs tomorrow"))
+    }
+
+    @Test
+    fun missingReminderTaskCanBeProvidedAfterTheTime() {
+        val initial = "Remind me tomorrow"
+        assertEquals("What should I remind you to do?", ReminderRequestParser.missingDetailQuestion(initial))
+        val completed = ReminderRequestParser.appendFollowUp(initial, "to buy eggs at 3pm")
+        assertEquals("buy eggs", ReminderRequestParser.parse(completed, now)?.title)
     }
 
     @Test

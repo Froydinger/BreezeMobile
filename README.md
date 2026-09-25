@@ -9,7 +9,7 @@ Native Kotlin/Compose browser using Android System WebView (Chromium) for web pa
 - Android Keystore encrypted app records and a separate device-authenticated local password vault.
 - Chromium page protection, site dialogs and file inputs, find and desktop-site controls, and SAF downloads.
 - Breeze Cloud chat, research, fact-check, summarize, and YouTube tasks use the mobile endpoint maintained in [`Froydinger/breezebrowser-live`](https://github.com/Froydinger/breezebrowser-live/tree/native-swift-browser/cloudflare/breeze-chat-worker). Keep its request/SSE contract in sync with `NavSseClient.kt` and `cloud/MOBILE-RESPONSES.md`.
-- **Cloud sync — Coming soon.** There is no account creation or cloud-sync connection in this build. Local password storage does not upload credentials.
+- Optional Breeze accounts use Supabase Auth. Bookmarks, tabs, history, chats, and reminders each have a separate opt-in sync control; all start off. The encrypted password vault remains local. FCM is used only for opted-in reminder delivery, with Analytics disabled.
 
 ## Build
 
@@ -31,7 +31,7 @@ Five live Worker checks for chat, research, fact-check, summarize, and YouTube c
 
 Independent visual review passed the revised reference screens (see `qa/VISUAL-REVIEW.md`). Functional interaction evidence is from the emulator unless explicitly stated in [BUILD-STATUS.md](BUILD-STATUS.md). These checks cover the described flows, not every feature or device configuration.
 
-Website passkey provider authorization remains a release requirement; there is no passkey toggle claiming that provider setup is complete. The local password vault uses encrypted device storage and system authentication. The temporary encrypted JSON app store must become transactional indexed storage before large-history scaling or sync.
+The browser currently enables Android's app-associated Web Authentication support; support for passkeys on arbitrary websites still requires Google's separate browser approval. The local password vault uses encrypted device storage and system authentication. The temporary encrypted JSON app store must become transactional indexed storage before large-history scaling or sync.
 
 ## Files
 

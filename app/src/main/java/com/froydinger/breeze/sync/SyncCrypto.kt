@@ -46,7 +46,7 @@ object SyncCrypto {
     }
     private fun aad(e: SyncEnvelope): ByteArray {
         for (id in listOf(e.recordId,e.operationId,e.deviceId)) require(UUID.fromString(id).toString() == id) { "IDs must be canonical lowercase UUIDs" }
-        require(e.collection in listOf("bookmarks","history","chats") && e.keyEpoch >= 1 && e.expectedRevision >= 0)
+        require(e.collection in listOf("bookmarks","history","chats","tabs","reminders") && e.keyEpoch >= 1 && e.expectedRevision >= 0)
         return JSONArray().put(1).put(e.recordId).put(e.collection).put(e.operationId).put(e.deviceId).put(e.keyEpoch).put(e.deleted).put(e.expectedRevision).toString().toByteArray(Charsets.UTF_8)
     }
 }

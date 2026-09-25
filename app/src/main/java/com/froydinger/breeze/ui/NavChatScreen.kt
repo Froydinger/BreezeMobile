@@ -641,6 +641,13 @@ fun NavChatScreen(state: BrowserState, modifier: Modifier = Modifier) {
             initialDueAt = reminderDraftDueAt,
         )
     }
+    if (state.showExactAlarmPrompt) AlertDialog(
+        onDismissRequest = { state.resolveExactAlarmPrompt(false) },
+        title = { Text("Improve reminder timing?") },
+        text = { Text("Android may delay reminders unless Breeze can schedule exact alarms. The reminder is saved either way. You can allow precise timing in Android Settings.") },
+        confirmButton = { TextButton(onClick = { state.resolveExactAlarmPrompt(true) }) { Text("Open Settings") } },
+        dismissButton = { TextButton(onClick = { state.resolveExactAlarmPrompt(false) }) { Text("Not now") } },
+    )
 }
 
 @Composable

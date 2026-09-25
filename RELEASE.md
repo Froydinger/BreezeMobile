@@ -22,4 +22,4 @@ Worker changes are separate. Test and deploy the Worker from `breezebrowser-live
 
 ## Local build credential
 
-For local builds, put the authorized Breeze client credential in an ignored root `.breeze-client-token` file or provide it through `BREEZE_CLIENT_TOKEN`. Debug builds may omit it for UI/build checks; cloud requests will not authenticate without it. Release builds require it. Never put the value in command output, source control, screenshots, or public release notes.
+For local builds, put the authorized Breeze client credential in an ignored root `.breeze-client-token` file or provide it through `BREEZE_CLIENT_TOKEN`. Account builds also need the Supabase public anon key through `SUPABASE_ANON_KEY` or an ignored root `.supabase-anon-key` file. The anon key is designed to ship in the app; keep the service-role key and Firebase service-account JSON only in Supabase Secrets. Debug builds may omit the Breeze client credential for UI/build checks; cloud requests will not authenticate without it. Release builds require the Breeze client credential. Never put private credentials in command output, source control, screenshots, or public release notes.

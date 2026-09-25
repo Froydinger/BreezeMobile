@@ -125,7 +125,7 @@ fun LibraryScreen(state: BrowserState, initialFilter: String = state.historyInit
                 if (confirmClear) AlertDialog(
                     onDismissRequest = { confirmClear = false }, title = { Text("Clear web history?") },
                     text = { Text("All saved web visits on this device will be removed. Bookmarks and chats will stay.") },
-                    confirmButton = { TextButton(onClick = { confirmClear = false; state.history.clear(); state.persist() }) { Text("Clear history") } },
+                    confirmButton = { TextButton(onClick = { confirmClear = false; state.clearHistory() }) { Text("Clear history") } },
                     dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } },
                 )
             }
@@ -137,7 +137,7 @@ fun LibraryScreen(state: BrowserState, initialFilter: String = state.historyInit
                     LibrarySegments(filters, filter, onSelect = { filter = it }, modifier = Modifier.weight(1f))
                     if (state.history.isNotEmpty()) {
                         Spacer(Modifier.width(10.dp))
-                        LibraryClearHistoryAction { state.history.clear(); state.persist() }
+                        LibraryClearHistoryAction { state.clearHistory() }
                     }
                 }
             } else {
@@ -163,7 +163,7 @@ fun LibraryScreen(state: BrowserState, initialFilter: String = state.historyInit
                             entry.page?.let { page ->
                                 HistoryPageRow(page, dark, line, ink, muted,
                                     onOpen = { state.navigate(page.url, new = true) },
-                                    onDelete = { state.history.remove(page); state.persist() })
+                                    onDelete = { state.removeHistoryEntry(page) })
                             }
                             entry.chat?.let { chat ->
                                 HistoryChatRow(chat, muted, line,
@@ -177,7 +177,7 @@ fun LibraryScreen(state: BrowserState, initialFilter: String = state.historyInit
                         item(key = "web-history-heading-$dateGroup") { LibraryDateHeading(dateGroup) }
                         items(pages, key = { "history-${it.id}" }) { page ->
                             HistoryPageRow(page, dark, line, ink, muted, onOpen = { state.navigate(page.url, new = true) },
-                                onDelete = { state.history.remove(page); state.persist() })
+                                onDelete = { state.removeHistoryEntry(page) })
                         }
                     }
                 } else if (filter == "Web") {
@@ -191,7 +191,7 @@ fun LibraryScreen(state: BrowserState, initialFilter: String = state.historyInit
                 else items(bookmarkMatches, key = { "bookmark-${it.id}" }) { page ->
                     HistoryPageRow(page, dark, line, ink, muted, isBookmark = true,
                         onOpen = { state.navigate(page.url, new = true) },
-                        onDelete = { state.bookmarks.remove(page); state.persist() },
+                        onDelete = { state.removeBookmarkEntry(page) },
                         onEdit = { updated ->
                             val index = state.bookmarks.indexOfFirst { it.id == updated.id }
                             if (index >= 0) { state.bookmarks[index] = updated; state.persist() }
@@ -347,13 +347,7 @@ private fun RecentChatRow(chat: LocalChat, muted: Color, line: Color, onOpen: ()
 }
 
 private fun removeChat(state: BrowserState, chat: LocalChat) {
-    chat.job?.cancel()
-    state.chats.remove(chat)
-    if (state.activeChat?.id == chat.id) {
-        state.activeChat = null
-        if (state.screen == "chat") state.screen = "browser"
-    }
-    state.persist()
+    state.removeChatEntry(chat)
 }
 
 @Composable
@@ -405,8 +399,14 @@ private fun SettingsContent(state: BrowserState, onBack: () -> Unit, onChooseBac
             item { GeneralSettingsCard(state) }
             item { SettingSectionTitle("Passwords") }
             item { SettingsActionCard(BreezeIcons.Lock, "Password vault", "Encrypted on this device", "Open", line = MaterialTheme.colorScheme.outline) { state.screen = "passwords" } }
-            item { SettingSectionTitle("Cloud sync") }
-            item { CloudSyncCard() }
+            item { SettingSectionTitle("Account & sync") }
+            item {
+                val accountLine = state.cloudAccount.email?.let { "Signed in as $it" } ?: "Sign in and choose what syncs"
+                SettingsActionCard(BreezeIcons.Cloud, "Breeze account", accountLine, "Open", line = MaterialTheme.colorScheme.outline) { state.screen = "account" }
+            }
+            item { SettingSectionTitle("Legal") }
+            item { SettingsActionCard(BreezeIcons.Shield, "Privacy policy", "What Breeze stores and sends", "Read", line = MaterialTheme.colorScheme.outline) { state.openLegalDocument("privacy-policy") } }
+            item { SettingsActionCard(BreezeIcons.FileText, "Terms of service", "Terms for using Breeze Mobile", "Read", line = MaterialTheme.colorScheme.outline) { state.openLegalDocument("terms-of-service") } }
             item { SettingSectionTitle("More home options") }
             item { HomeOptionsCard(state) }
         }
@@ -668,18 +668,6 @@ private fun HomeOptionsCard(state: BrowserState) {
         SettingsToggleRow(BreezeIcons.Palette, "Liquid glass", "Use translucent glass surfaces", state.glass, onChange = {
             state.glass = it; state.persist()
         })
-    }
-}
-
-@Composable
-private fun CloudSyncCard() {
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(17.dp)).background(MaterialTheme.colorScheme.surface).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(17.dp)).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(BreezeIcons.Cloud, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(27.dp))
-        Column(Modifier.weight(1f).padding(start = 14.dp)) {
-            Text("Cloud sync", style = MaterialTheme.typography.bodyLarge)
-            Text("Bookmarks, history, and chats stay on this device.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Text("Coming soon", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
     }
 }
 

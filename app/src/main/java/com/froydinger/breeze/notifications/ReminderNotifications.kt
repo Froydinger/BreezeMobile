@@ -43,15 +43,25 @@ object ReminderScheduler {
         ensureChannel(context)
         val alarm = context.getSystemService(AlarmManager::class.java) ?: return
         val pending = alarmIntent(context, reminder.id)
-        // Local reminders use Android's inexact idle-friendly alarm path. It needs
-        // no Firebase/VAPID or special exact-alarm access and may be delivered late.
         val now = System.currentTimeMillis()
         val triggerAt = reminder.dueAt.takeIf { it > now } ?: (now + 2_000L)
-        alarm.setAndAllowWhileIdle(
-            AlarmManager.RTC_WAKEUP,
-            triggerAt,
-            pending,
-        )
+        if (canSchedulePrecisely(context)) {
+            alarm.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending)
+        } else {
+            alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending)
+        }
+    }
+
+    fun canSchedulePrecisely(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
+        return context.getSystemService(AlarmManager::class.java)?.canScheduleExactAlarms() == true
+    }
+
+    fun exactAlarmSettingsIntent(context: Context): Intent? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || canSchedulePrecisely(context)) return null
+        return Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+            .setData(Uri.parse("package:${context.packageName}"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 
     fun nextOccurrence(reminder: LocalReminder, now: ZonedDateTime = ZonedDateTime.now()): Long? {
@@ -138,6 +148,9 @@ object ReminderScheduler {
     fun post(context: Context, reminder: LocalReminder): Boolean {
         if (!notificationsAllowed(context)) return false
         ensureChannel(context)
+        val deliveryKey = "${reminder.id}:${reminder.dueAt}"
+        val deliveryPreferences = context.getSharedPreferences("breeze_reminder_delivery", Context.MODE_PRIVATE)
+        if (deliveryPreferences.getString("last_delivery:${reminder.id}", null) == deliveryKey) return true
         val openApp = PendingIntent.getActivity(
             context,
             reminder.id.hashCode(),
@@ -163,6 +176,7 @@ object ReminderScheduler {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return false
         return try {
             manager.notify(reminder.id, reminder.id.hashCode(), notification)
+            deliveryPreferences.edit().putString("last_delivery:${reminder.id}", deliveryKey).apply()
             true
         } catch (_: SecurityException) {
             false

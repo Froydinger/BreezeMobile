@@ -5,5 +5,8 @@ local.properties
 *.jks
 *.keystore
 .breeze-client-token
+.supabase-anon-key
 
 qa/avd/
+
+supabase/.temp/

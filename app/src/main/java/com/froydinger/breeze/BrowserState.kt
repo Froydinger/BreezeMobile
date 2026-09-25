@@ -17,6 +17,9 @@ import com.froydinger.breeze.core.*
 import com.froydinger.breeze.cloud.NavSseClient
 import com.froydinger.breeze.data.EncryptedStateStore
 import com.froydinger.breeze.data.TabThumbnailStore
+import com.froydinger.breeze.sync.CloudAccountRepository
+import com.froydinger.breeze.sync.CloudSyncCoordinator
+import com.froydinger.breeze.sync.CloudSyncPreferences
 import com.froydinger.breeze.notifications.ParsedReminderRequest
 import com.froydinger.breeze.notifications.ReminderRepeat
 import com.froydinger.breeze.notifications.ReminderRequestParser
@@ -31,6 +34,7 @@ import org.mozilla.geckoview.*
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.util.UUID
+import java.security.MessageDigest
 import kotlin.coroutines.resume
 
 private const val PAGE_CONTROLS_EXTENSION_ID = "breeze-page-controls@froydinger.com"
@@ -129,6 +133,8 @@ class LocalChat(val id: String = UUID.randomUUID().toString(), title: String, va
     val finishedReplies = mutableStateListOf<Int>()
     var running by mutableStateOf(false)
     var status by mutableStateOf("")
+    /** An incomplete reminder request stays in chat until the user supplies the missing detail. */
+    var pendingReminderPrompt by mutableStateOf("")
     var job: Job? = null
     /** One page pre-opened in the background after an explicit user request. */
     var preopenedNavUrl by mutableStateOf("")
@@ -152,6 +158,8 @@ class BrowserState(private val app: Application) {
         private set
     var pendingReminderDraft by mutableStateOf<String?>(null)
     var pendingReminderDraftDueAt by mutableStateOf<Long?>(null)
+        private set
+    var showExactAlarmPrompt by mutableStateOf(false)
         private set
     var httpsOnly by mutableStateOf(true)
     var selectedId by mutableStateOf("")
@@ -345,6 +353,21 @@ class BrowserState(private val app: Application) {
     private var writeBlocked = false
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val store = EncryptedStateStore(app)
+    val cloudAccount = CloudAccountRepository(app, BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_ANON_KEY, BuildConfig.AUTH_CALLBACK_URI)
+    var legalReturnScreen by mutableStateOf("settings")
+        private set
+    fun openLegalDocument(screen: String) {
+        require(screen == "privacy-policy" || screen == "terms-of-service")
+        legalReturnScreen = this.screen
+        this.screen = screen
+    }
+    fun closeLegalDocument() { screen = legalReturnScreen }
+    private val cloudSync = CloudSyncCoordinator(this, cloudAccount)
+    private var cloudSyncJob: Job? = null
+    private data class CloudEntryVersion(val fingerprint: String, val updatedAt: Long)
+    private val cloudEntryVersions = mutableMapOf<String, CloudEntryVersion>()
+    private val cloudDeletedIds = mutableMapOf<String, LinkedHashSet<String>>()
+    private var applyingCloudSnapshot = false
     private val thumbnailStore = TabThumbnailStore(app)
     private val thumbnailLock = Mutex()
     private var saveJob: Job? = null
@@ -402,6 +425,13 @@ class BrowserState(private val app: Application) {
             if (tabs.isEmpty()) newTab(focusHomeInput = false)
             ready = true
             persist()
+            if (cloudAccount.signedIn && cloudAccount.configured) {
+                runCatching {
+                    cloudAccount.loadPreferences()
+                    cloudSync.syncNow()
+                    registerReminderPushIfAllowed()
+                }.onFailure { cloudAccount.syncStatus = "Waiting for a connection" }
+            }
         }
     }
     private fun defaultPinnedSites() = listOf(
@@ -629,6 +659,7 @@ class BrowserState(private val app: Application) {
         if (tabs.none { it === tab }) return
         val wasSelected = selectedId == tab.id
         val privacy = tab.private
+        if (!privacy) markCloudDeleted("tabs", tab.id)
         tab.session?.let { session ->
             elementPickerPorts.remove(session)
             pageControlPorts.remove(session)?.toList()?.forEach { it.disconnect() }
@@ -1111,10 +1142,42 @@ class BrowserState(private val app: Application) {
         persist(); notice = "Bookmark saved"
     }
     fun removeBookmark(url: String) {
+        val removed = bookmarks.filter { it.url == url }
+        removed.forEach { markCloudDeleted("bookmarks", it.id) }
         if (bookmarks.removeAll { it.url == url }) {
             persist()
             notice = "Bookmark removed"
         }
+    }
+
+    fun removeBookmarkEntry(page: SavedPage) {
+        markCloudDeleted("bookmarks", page.id)
+        bookmarks.remove(page)
+        persist()
+    }
+
+    fun removeHistoryEntry(page: SavedPage) {
+        markCloudDeleted("history", page.id)
+        history.remove(page)
+        persist()
+    }
+
+    fun clearHistory() {
+        history.forEach { markCloudDeleted("history", it.id) }
+        history.clear()
+        tabs.forEach { it.session?.purgeHistory() }
+        persist()
+    }
+
+    fun removeChatEntry(chat: LocalChat) {
+        markCloudDeleted("chats", chat.id)
+        chat.job?.cancel()
+        chats.remove(chat)
+        if (activeChat?.id == chat.id) {
+            activeChat = null
+            if (screen == "chat") screen = "browser"
+        }
+        persist()
     }
     fun startChat(prompt: String = "") {
         if (selected?.private == true) { notice = "Leave private browsing before starting a saved cloud conversation."; return }
@@ -1375,6 +1438,10 @@ class BrowserState(private val app: Application) {
         val outgoingPrompt = prompt.trim().ifBlank { if (attachedImageUri != null) "What is in this image?" else return }
         val chat = activeChat ?: return
         if (chat.running) return
+        if (attachedImageUri == null && chat.pendingReminderPrompt.isNotBlank()) {
+            handleReminderFollowUp(chat, outgoingPrompt)
+            return
+        }
         if (attachedImageUri == null && ReminderRequestParser.isReminderRequest(outgoingPrompt)) {
             handleReminderRequest(chat, outgoingPrompt)
             return
@@ -1919,6 +1986,7 @@ class BrowserState(private val app: Application) {
         if (cookiesAndSiteData) flags = flags or StorageController.ClearFlags.SITE_DATA
         fun finish() {
             if (history) {
+                this.history.forEach { markCloudDeleted("history", it.id) }
                 this.history.clear()
                 tabs.forEach { it.session?.purgeHistory() }
             }
@@ -2036,6 +2104,7 @@ class BrowserState(private val app: Application) {
         if (closing.isEmpty()) return
         val selectedWasClosed = closing.any { it.id == selectedId }
         closing.forEach { tab ->
+            if (!tab.private) markCloudDeleted("tabs", tab.id)
             tab.chromiumView?.let { view ->
                 tab.chromiumView = null
                 runCatching { view.stopLoading(); view.loadUrl("about:blank"); view.clearHistory(); view.removeAllViews(); view.destroy() }
@@ -2098,14 +2167,35 @@ class BrowserState(private val app: Application) {
         chat.messages.add("user" to prompt)
         val request = ReminderRequestParser.parse(prompt)
         if (request == null) {
-            chat.messages.add("assistant" to "What day and time should I use? I opened the on-device reminder controls so you can choose it.")
-            pendingReminderDraftDueAt = ReminderRequestParser.suggestedDueAt(prompt)
-            pendingReminderDraft = ReminderRequestParser.taskTitle(prompt).ifBlank { prompt }
+            chat.pendingReminderPrompt = prompt
+            chat.messages.add("assistant" to ReminderRequestParser.missingDetailQuestion(prompt))
+            chat.finishedReplies.add(chat.messages.lastIndex)
         } else {
-            pendingReminderDraftDueAt = null
             pendingReminderRequest = request
         }
-        if (chat.title == "New conversation") chat.title = "Reminder: ${ReminderRequestParser.taskTitle(prompt).take(42)}"
+        if (chat.title == "New conversation") chat.title = "Reminder: ${ReminderRequestParser.taskTitle(prompt).ifBlank { "New reminder" }.take(42)}"
+        persist()
+    }
+
+    private fun handleReminderFollowUp(chat: LocalChat, answer: String) {
+        chat.messages.add("user" to answer)
+        if (answer.equals("cancel", true) || answer.equals("never mind", true) || answer.equals("nevermind", true)) {
+            chat.pendingReminderPrompt = ""
+            chat.messages.add("assistant" to "Okay, I cancelled setting that reminder.")
+            chat.finishedReplies.add(chat.messages.lastIndex)
+            persist()
+            return
+        }
+        val combined = ReminderRequestParser.appendFollowUp(chat.pendingReminderPrompt, answer)
+        val request = ReminderRequestParser.parse(combined)
+        if (request != null) {
+            chat.pendingReminderPrompt = ""
+            pendingReminderRequest = request
+        } else {
+            chat.pendingReminderPrompt = combined
+            chat.messages.add("assistant" to ReminderRequestParser.missingDetailQuestion(combined))
+            chat.finishedReplies.add(chat.messages.lastIndex)
+        }
         persist()
     }
 
@@ -2115,6 +2205,11 @@ class BrowserState(private val app: Application) {
 
     fun finishChatReminder(request: ParsedReminderRequest) {
         val reminder = addReminder(request.title, request.dueAt, request.repeat)
+        activeChat?.pendingReminderPrompt = ""
+        if (com.froydinger.breeze.notifications.ReminderScheduler.exactAlarmSettingsIntent(app) != null &&
+            !privacyPreferences.getBoolean("exact_alarm_prompt_seen", false)) {
+            showExactAlarmPrompt = true
+        }
         val scheduled = com.froydinger.breeze.notifications.ReminderScheduler.notificationsAllowed(app)
         activeChat?.let { chat ->
             val whenText = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(reminder.dueAt)
@@ -2127,6 +2222,98 @@ class BrowserState(private val app: Application) {
         persist()
     }
 
+    fun resolveExactAlarmPrompt(openSettings: Boolean) {
+        showExactAlarmPrompt = false
+        privacyPreferences.edit().putBoolean("exact_alarm_prompt_seen", true).apply()
+        if (openSettings) {
+            val intent = com.froydinger.breeze.notifications.ReminderScheduler.exactAlarmSettingsIntent(app)
+            if (intent != null) runCatching { app.startActivity(intent) }
+                .onFailure { notice = "Open Android Settings → Apps → Breeze → Alarms & reminders to allow on-time reminders." }
+        }
+    }
+
+    fun rescheduleReminders() {
+        reminders.forEach { com.froydinger.breeze.notifications.ReminderScheduler.schedule(app, it) }
+    }
+
+    suspend fun setCloudSyncEnabled(collection: String, enabled: Boolean): Int {
+        cloudAccount.setPreference(collection, enabled)
+        val synced = if (enabled) cloudSync.syncNow() else 0
+        if (collection == "reminders") {
+            if (enabled) registerReminderPushIfAllowed()
+            else com.froydinger.breeze.notifications.ReminderPushRegistration.disable(app, cloudAccount)
+        }
+        return synced
+    }
+
+    suspend fun syncCloudNow(): Int = cloudSync.syncNow()
+
+    suspend fun syncCloudCollection(collection: String): Int = cloudSync.syncCollection(collection)
+
+    fun registerReminderPushIfAllowed() {
+        com.froydinger.breeze.notifications.ReminderPushRegistration.registerIfAllowed(app, cloudAccount)
+    }
+
+    suspend fun signOutCloud() {
+        com.froydinger.breeze.notifications.ReminderPushRegistration.disable(app, cloudAccount)
+        cloudAccount.signOut()
+        clearSyncedLocalData()
+    }
+
+    suspend fun deleteCloudAccount() {
+        com.froydinger.breeze.notifications.ReminderPushRegistration.disable(app, cloudAccount)
+        cloudAccount.deleteAccount()
+        clearSyncedLocalData()
+    }
+
+    /** Clears synced browser data after sign-out while preserving the local password vault. */
+    fun clearSyncedLocalData() {
+        tabs.toList().forEach { tab ->
+            tab.chromiumView?.let { view ->
+                tab.chromiumView = null
+                runCatching { view.stopLoading(); view.loadUrl("about:blank"); view.removeAllViews(); view.destroy() }
+            }
+            tab.session?.let { session ->
+                elementPickerPorts.remove(session)
+                pageControlPorts.remove(session)?.toList()?.forEach { it.disconnect() }
+                videoPortStates.remove(session)
+                pendingElementPicks.remove(session)
+                session.close()
+            }
+            deleteThumbnail(tab)
+        }
+        tabs.clear()
+        runCatching { privateProfileCleaner?.invoke() }
+        reminders.forEach { com.froydinger.breeze.notifications.ReminderScheduler.cancel(app, it.id) }
+        chats.forEach { it.job?.cancel() }
+        bookmarks.clear()
+        history.clear()
+        reminders.clear()
+        chats.clear()
+        activeChat = null
+        contextTabId = null
+        selectedId = ""
+        screen = "browser"
+        historyInitialFilter = "All"
+        cloudDeletedIds.clear()
+        cloudEntryVersions.clear()
+        newTab(focusHomeInput = false)
+        persist()
+    }
+
+    /** Exports browser data only; the password vault, auth tokens and site credentials never enter this file. */
+    fun exportAccountData(): JSONObject = snapshot().let { exported ->
+        exported.put("exportedAt", System.currentTimeMillis())
+        exported.put("exportNote", "Password vault contents and account tokens are excluded. Sync is optional and encrypted in transit.")
+        exported.optJSONArray("tabs")?.let { rows ->
+            for (index in 0 until rows.length()) rows.optJSONObject(index)?.remove("sessionState")
+        }
+        exported.optJSONArray("chats")?.let { rows ->
+            for (index in 0 until rows.length()) rows.optJSONObject(index)?.remove("images")
+        }
+        exported
+    }
+
     fun addReminder(title: String, dueAt: Long, repeat: ReminderRepeat = ReminderRepeat.NONE): LocalReminder {
         val repeatDay = java.time.Instant.ofEpochMilli(dueAt).atZone(java.time.ZoneId.systemDefault()).dayOfMonth
         val reminder = LocalReminder(title = title.trim(), dueAt = dueAt, repeat = repeat, repeatDayOfMonth = repeatDay)
@@ -2136,6 +2323,7 @@ class BrowserState(private val app: Application) {
         return reminder
     }
     fun removeReminder(id: String) {
+        markCloudDeleted("reminders", id)
         reminders.removeAll { it.id == id }
         com.froydinger.breeze.notifications.ReminderScheduler.cancel(app, id)
         persist()
@@ -2206,27 +2394,272 @@ class BrowserState(private val app: Application) {
     }
     fun persist() {
         if (!ready || writeBlocked) return
+        val syncAfterSave = !applyingCloudSnapshot
         saveJob?.cancel()
         saveJob = scope.launch {
             delay(250)
             val state = snapshot()
-            try { withContext(Dispatchers.IO) { store.save(state) } }
+            try {
+                withContext(Dispatchers.IO) { store.save(state) }
+                if (syncAfterSave) scheduleCloudSync(true)
+            }
             catch (e: Exception) { notice = "Changes could not be saved. ${e.javaClass.simpleName}" }
         }
     }
     suspend fun persistImmediately(): Boolean {
         if (!ready || writeBlocked) return false
+        val syncAfterSave = !applyingCloudSnapshot
         saveJob?.cancel()
         saveJob = null
         val current = snapshot()
         return try {
             withContext(Dispatchers.IO) { store.save(current) }
+            if (syncAfterSave) scheduleCloudSync(true)
             true
         } catch (e: Exception) {
             notice = "Changes could not be saved. ${e.javaClass.simpleName}"
             false
         }
     }
+
+    private fun markCloudDeleted(collection: String, id: String) {
+        if (id.isBlank() || collection !in CloudSyncPreferences.COLLECTIONS) return
+        cloudDeletedIds.getOrPut(collection) { linkedSetOf() }.add(id)
+        cloudEntryVersions.remove("$collection:$id")
+    }
+
+    private fun versionCloudEntry(collection: String, raw: JSONObject): JSONObject {
+        val id = raw.optString("id")
+        if (id.isBlank()) return JSONObject(raw.toString())
+        val fingerprint = Base64.encodeToString(
+            MessageDigest.getInstance("SHA-256").digest(raw.toString().toByteArray(Charsets.UTF_8)),
+            Base64.NO_WRAP,
+        )
+        val key = "$collection:$id"
+        val previous = cloudEntryVersions[key]
+        val updatedAt = previous?.takeIf { it.fingerprint == fingerprint }?.updatedAt ?: System.currentTimeMillis()
+        cloudEntryVersions[key] = CloudEntryVersion(fingerprint, updatedAt)
+        return JSONObject(raw.toString()).put("_updatedAt", updatedAt)
+    }
+
+    private fun recordCloudVersion(collection: String, entry: JSONObject) {
+        val raw = JSONObject(entry.toString()).also { it.remove("_updatedAt") }
+        val id = raw.optString("id")
+        if (id.isBlank()) return
+        val fingerprint = Base64.encodeToString(
+            MessageDigest.getInstance("SHA-256").digest(raw.toString().toByteArray(Charsets.UTF_8)),
+            Base64.NO_WRAP,
+        )
+        cloudEntryVersions["$collection:$id"] = CloudEntryVersion(fingerprint, entry.optLong("_updatedAt", System.currentTimeMillis()))
+    }
+
+    fun cloudCollectionSnapshot(collection: String): JSONObject {
+        require(collection in CloudSyncPreferences.COLLECTIONS)
+        val rawEntries = when (collection) {
+            "bookmarks" -> bookmarks.map { page -> JSONObject().put("id", page.id).put("title", page.title).put("url", page.url).put("time", page.time) }
+            "history" -> history.filter { isHttpPage(it.url) }.map { page -> JSONObject().put("id", page.id).put("title", page.title).put("url", page.url).put("time", page.time) }
+            "tabs" -> tabs.filterNot { it.private }.map { tab -> JSONObject().put("id", tab.id).put("title", tab.title).put("url", tab.url.takeIf(::isCloudTabUrl).orEmpty()).put("lastAccessedAt", tab.lastAccessedAt) }
+            "chats" -> chats.map { chat ->
+                JSONObject().put("id", chat.id).put("title", chat.title).put("time", chat.time)
+                    .put("pendingReminderPrompt", chat.pendingReminderPrompt)
+                    .put("finishedReplies", JSONArray(chat.finishedReplies.toList()))
+                    .put("messages", JSONArray().apply { chat.messages.forEach { (role, text) -> put(JSONObject().put("role", role).put("text", text.take(24_000))) } })
+                    .put("sources", JSONArray().apply { chat.sources.filter { isHttpPage(it.second) }.takeLast(100).forEach { (title, url) -> put(JSONObject().put("title", title.take(500)).put("url", url.take(4096))) } })
+            }
+            "reminders" -> reminders.map { reminder -> JSONObject()
+                .put("id", reminder.id).put("title", reminder.title).put("dueAt", reminder.dueAt)
+                .put("repeat", reminder.repeat.name).put("repeatDayOfMonth", reminder.repeatDayOfMonth)
+                .put("deliveredAt", reminder.deliveredAt ?: JSONObject.NULL) }
+            else -> emptyList()
+        }
+        return JSONObject().put("formatVersion", 1)
+            .put("entries", JSONArray().apply { rawEntries.forEach { put(versionCloudEntry(collection, it)) } })
+            .put("deletedIds", JSONArray(cloudDeletedIds[collection].orEmpty().toList()))
+    }
+
+    /** Merges a selected cloud collection with local data and applies the result without losing either side. */
+    fun mergeCloudCollection(collection: String, remote: JSONObject): JSONObject {
+        require(collection in CloudSyncPreferences.COLLECTIONS)
+        val local = cloudCollectionSnapshot(collection)
+        val tombstones = linkedSetOf<String>().apply {
+            local.optJSONArray("deletedIds")?.let { values -> for (i in 0 until values.length()) values.optString(i).takeIf(String::isNotBlank)?.let(::add) }
+            remote.optJSONArray("deletedIds")?.let { values -> for (i in 0 until values.length()) values.optString(i).takeIf(String::isNotBlank)?.let(::add) }
+        }
+        val merged = linkedMapOf<String, JSONObject>()
+        fun collect(source: JSONArray?) {
+            if (source == null) return
+            for (index in 0 until source.length()) {
+                val entry = source.optJSONObject(index) ?: continue
+                val id = entry.optString("id")
+                if (id.isBlank() || id in tombstones || !validCloudEntry(collection, entry)) continue
+                val previous = merged[id]
+                merged[id] = if (previous == null) JSONObject(entry.toString()) else mergeCloudEntry(collection, previous, entry)
+            }
+        }
+        collect(local.optJSONArray("entries"))
+        collect(remote.optJSONArray("entries"))
+        tombstones.forEach { merged.remove(it) }
+        tombstones.forEach { cloudEntryVersions.remove("$collection:$it") }
+        val entries = merged.values.sortedByDescending { cloudSortTime(collection, it) }
+        entries.forEach { recordCloudVersion(collection, it) }
+        cloudDeletedIds[collection] = tombstones
+        applyingCloudSnapshot = true
+        try {
+            applyCloudEntries(collection, entries, tombstones)
+            persist()
+        } finally {
+            applyingCloudSnapshot = false
+        }
+        return JSONObject().put("formatVersion", 1)
+            .put("entries", JSONArray().apply { entries.forEach { put(it) } })
+            .put("deletedIds", JSONArray(tombstones.toList()))
+    }
+
+    private fun validCloudEntry(collection: String, entry: JSONObject): Boolean {
+        val id = entry.optString("id")
+        if (id.length !in 1..128) return false
+        if (collection == "tabs" && entry.optString("url").isBlank()) return true
+        if (collection in setOf("bookmarks", "history", "tabs")) return isCloudTabUrl(entry.optString("url"))
+        if (collection == "reminders") return entry.optString("title").isNotBlank() && entry.optLong("dueAt") > 0L
+        return true
+    }
+
+    private fun isCloudTabUrl(url: String): Boolean = url.length <= 4096 && runCatching {
+        val parsed = Uri.parse(url)
+        parsed.scheme in listOf("http", "https") && !parsed.host.isNullOrBlank()
+    }.getOrDefault(false)
+
+    private fun cloudSortTime(collection: String, entry: JSONObject): Long = when (collection) {
+        "tabs" -> entry.optLong("lastAccessedAt")
+        "reminders" -> entry.optLong("dueAt")
+        else -> entry.optLong("time")
+    }
+
+    private fun mergeCloudEntry(collection: String, local: JSONObject, remote: JSONObject): JSONObject {
+        val localVersion = local.optLong("_updatedAt")
+        val remoteVersion = remote.optLong("_updatedAt")
+        val newest = if (remoteVersion > localVersion) remote else local
+        if (collection != "chats") return JSONObject(newest.toString())
+        val result = JSONObject(newest.toString())
+        fun combineArray(name: String, key: (JSONObject) -> String): JSONArray {
+            val values = linkedMapOf<String, JSONObject>()
+            for (source in listOf(local.optJSONArray(name), remote.optJSONArray(name))) {
+                if (source == null) continue
+                for (index in 0 until source.length()) {
+                    val item = source.optJSONObject(index) ?: continue
+                    val itemKey = key(item)
+                    if (itemKey.isNotBlank()) values.putIfAbsent(itemKey, JSONObject(item.toString()))
+                }
+            }
+            return JSONArray(values.values)
+        }
+        result.put("messages", combineArray("messages") { "${it.optString("role")}\u001f${it.optString("text")}" })
+        result.put("sources", combineArray("sources") { "${it.optString("title")}\u001f${it.optString("url")}" })
+        val finished = linkedSetOf<Int>()
+        for (source in listOf(local.optJSONArray("finishedReplies"), remote.optJSONArray("finishedReplies"))) {
+            if (source != null) for (index in 0 until source.length()) finished.add(source.optInt(index))
+        }
+        result.put("finishedReplies", JSONArray(finished.toList()))
+        if (local.optString("pendingReminderPrompt").isNotBlank() && remote.optString("pendingReminderPrompt").isBlank()) {
+            result.put("pendingReminderPrompt", local.optString("pendingReminderPrompt"))
+        }
+        result.put("_updatedAt", maxOf(localVersion, remoteVersion))
+        return result
+    }
+
+    private fun applyCloudEntries(collection: String, entries: List<JSONObject>, tombstones: Set<String>) {
+        fun page(entry: JSONObject) = SavedPage(entry.optString("id"), entry.optString("title"), entry.optString("url"), entry.optLong("time", System.currentTimeMillis()))
+        when (collection) {
+            "bookmarks" -> {
+                bookmarks.clear()
+                entries.filter { isCloudTabUrl(it.optString("url")) }.forEach { bookmarks.add(page(it)) }
+            }
+            "history" -> {
+                history.clear()
+                entries.filter { isCloudTabUrl(it.optString("url")) }.forEach { history.add(page(it)) }
+            }
+            "tabs" -> {
+                tabs.filter { !it.private && it.id in tombstones }.toList().forEach(::close)
+                entries.filterNot { it.optString("id") in tombstones }.forEach { entry ->
+                    val id = entry.optString("id")
+                    val url = entry.optString("url")
+                    val tab = tabs.firstOrNull { it.id == id && !it.private } ?: LiveTab(id).also { tabs.add(it) }
+                    if (entry.optLong("lastAccessedAt") >= tab.lastAccessedAt || tab.url.isBlank()) {
+                        tab.url = url
+                        tab.title = entry.optString("title", "New tab").ifBlank { "New tab" }
+                        tab.lastAccessedAt = entry.optLong("lastAccessedAt", System.currentTimeMillis())
+                        tab.restoredSessionState = false
+                        tab.savedSessionState = null
+                    }
+                }
+                if (tabs.none { it.id == selectedId }) selectedId = tabs.firstOrNull { !it.private }?.id.orEmpty()
+                if (tabs.isEmpty()) newTab(focusHomeInput = false)
+                updateSessionPriorities()
+            }
+            "chats" -> {
+                val old = chats.associateBy { it.id }
+                chats.clear()
+                entries.forEach { entry ->
+                    val id = entry.optString("id")
+                    val chat = old[id] ?: LocalChat(id, entry.optString("title", "Conversation"), entry.optLong("time", System.currentTimeMillis()))
+                    chat.title = entry.optString("title", chat.title)
+                    val remoteMessages = buildList {
+                        entry.optJSONArray("messages")?.let { values ->
+                            for (i in 0 until values.length()) values.optJSONObject(i)?.let { add(it.optString("role") to it.optString("text")) }
+                        }
+                    }
+                    if (chat.running) {
+                        remoteMessages.filterNot { it in chat.messages }.forEach(chat.messages::add)
+                    } else {
+                        chat.messages.clear()
+                        chat.messages.addAll(remoteMessages)
+                    }
+                    chat.pendingReminderPrompt = entry.optString("pendingReminderPrompt", chat.pendingReminderPrompt)
+                    chat.finishedReplies.clear()
+                    entry.optJSONArray("finishedReplies")?.let { values -> for (i in 0 until values.length()) chat.finishedReplies.add(values.optInt(i)) }
+                    chat.sources.clear()
+                    entry.optJSONArray("sources")?.let { values ->
+                        for (i in 0 until values.length()) values.optJSONObject(i)?.let { source ->
+                            val sourceUrl = source.optString("url")
+                            if (isCloudTabUrl(sourceUrl)) chat.sources.add(source.optString("title") to sourceUrl)
+                        }
+                    }
+                    chats.add(chat)
+                }
+                chats.sortByDescending { it.time }
+                activeChat?.takeIf { chat -> chats.none { it.id == chat.id } }?.let { activeChat = null }
+            }
+            "reminders" -> {
+                val previousIds = reminders.mapTo(mutableSetOf()) { it.id }
+                val parsed = entries.mapNotNull { entry ->
+                    runCatching {
+                        val due = entry.optLong("dueAt")
+                        val repeat = runCatching { ReminderRepeat.valueOf(entry.optString("repeat", "NONE")) }.getOrDefault(ReminderRepeat.NONE)
+                        val day = entry.optInt("repeatDayOfMonth").takeIf { it in 1..31 }
+                            ?: java.time.Instant.ofEpochMilli(due).atZone(java.time.ZoneId.systemDefault()).dayOfMonth
+                        val delivered = entry.optLong("deliveredAt").takeIf { it > 0L }
+                        LocalReminder(entry.optString("id"), entry.optString("title"), due, repeat, day, delivered)
+                    }.getOrNull()
+                }
+                reminders.clear(); reminders.addAll(parsed)
+                (previousIds - parsed.map { it.id }.toSet()).forEach { com.froydinger.breeze.notifications.ReminderScheduler.cancel(app, it) }
+                parsed.forEach { com.froydinger.breeze.notifications.ReminderScheduler.schedule(app, it) }
+            }
+        }
+    }
+
+    private fun scheduleCloudSync(allowed: Boolean) {
+        if (!allowed || !cloudAccount.configured || !cloudAccount.signedIn ||
+            CloudSyncPreferences.COLLECTIONS.none { cloudAccount.preferences.enabled(it) }) return
+        cloudSyncJob?.cancel()
+        cloudSyncJob = scope.launch {
+            delay(1_500)
+            runCatching { cloudSync.syncNow() }
+                .onSuccess { cloudAccount.syncStatus = "Synced just now" }
+                .onFailure { cloudAccount.syncStatus = "Sync paused until connected" }
+        }
+    }
+
     private fun snapshot(): JSONObject = JSONObject().apply {
         put("httpsOnly", httpsOnly)
         put("reminders", JSONArray().apply { reminders.forEach { put(JSONObject().put("id", it.id).put("title", it.title).put("dueAt", it.dueAt).put("repeat", it.repeat.name).put("repeatDayOfMonth", it.repeatDayOfMonth).put("deliveredAt", it.deliveredAt ?: JSONObject.NULL)) } })
@@ -2250,9 +2683,49 @@ class BrowserState(private val app: Application) {
         put("hiddenElementRules", JSONObject().apply {
             hiddenElementRules.forEach { (site, selectors) -> put(site, JSONArray(selectors.filter(::isSafeElementSelector).take(MAX_HIDDEN_ELEMENTS_PER_SITE))) }
         })
-        put("chats", JSONArray().apply { chats.forEach { chat -> put(JSONObject().put("id", chat.id).put("title", chat.title).put("time", chat.time).put("finishedReplies", JSONArray(chat.finishedReplies.toList())).put("messages", JSONArray().apply { chat.messages.forEach { put(JSONObject().put("role", it.first).put("text", it.second)) } }).put("images", JSONArray().apply { chat.imagePreviews.forEach { (index, uri) -> put(JSONObject().put("index", index).put("uri", uri)) } }).put("sources", JSONArray().apply { chat.sources.forEach { put(JSONObject().put("title",it.first).put("url",it.second)) } })) } })
+        put("cloudDeletedIds", JSONObject().apply {
+            cloudDeletedIds.forEach { (collection, ids) -> put(collection, JSONArray(ids.toList())) }
+        })
+        put("cloudEntryVersions", JSONObject().apply {
+            cloudEntryVersions.forEach { (key, version) ->
+                val separator = key.indexOf(':')
+                if (separator <= 0) return@forEach
+                val collection = key.substring(0, separator)
+                val id = key.substring(separator + 1)
+                val group = optJSONObject(collection) ?: JSONObject().also { put(collection, it) }
+                group.put(id, JSONObject().put("fingerprint", version.fingerprint).put("updatedAt", version.updatedAt))
+            }
+        })
+        put("chats", JSONArray().apply { chats.forEach { chat -> put(JSONObject().put("id", chat.id).put("title", chat.title).put("time", chat.time).put("pendingReminderPrompt", chat.pendingReminderPrompt).put("finishedReplies", JSONArray(chat.finishedReplies.toList())).put("messages", JSONArray().apply { chat.messages.forEach { put(JSONObject().put("role", it.first).put("text", it.second)) } }).put("images", JSONArray().apply { chat.imagePreviews.forEach { (index, uri) -> put(JSONObject().put("index", index).put("uri", uri)) } }).put("sources", JSONArray().apply { chat.sources.forEach { put(JSONObject().put("title",it.first).put("url",it.second)) } })) } })
     }
     private fun restore(state: JSONObject) {
+        state.optJSONObject("cloudDeletedIds")?.let { groups ->
+            val collections = groups.keys()
+            while (collections.hasNext()) {
+                val collection = collections.next()
+                if (collection !in CloudSyncPreferences.COLLECTIONS) continue
+                val ids = groups.optJSONArray(collection) ?: continue
+                cloudDeletedIds[collection] = linkedSetOf<String>().apply {
+                    for (i in 0 until ids.length()) ids.optString(i).takeIf(String::isNotBlank)?.let(::add)
+                }
+            }
+        }
+        state.optJSONObject("cloudEntryVersions")?.let { groups ->
+            val collections = groups.keys()
+            while (collections.hasNext()) {
+                val collection = collections.next()
+                if (collection !in CloudSyncPreferences.COLLECTIONS) continue
+                val values = groups.optJSONObject(collection) ?: continue
+                val ids = values.keys()
+                while (ids.hasNext()) {
+                    val id = ids.next()
+                    val value = values.optJSONObject(id) ?: continue
+                    val fingerprint = value.optString("fingerprint")
+                    val updatedAt = value.optLong("updatedAt")
+                    if (id.isNotBlank() && fingerprint.isNotBlank() && updatedAt > 0L) cloudEntryVersions["$collection:$id"] = CloudEntryVersion(fingerprint, updatedAt)
+                }
+            }
+        }
         httpsOnly = state.optBoolean("httpsOnly", true)
         theme = runCatching { ThemeMode.valueOf(state.optString("theme")) }.getOrDefault(ThemeMode.SYSTEM)
         homeMode = runCatching { HomeInputMode.valueOf(state.optString("homeMode")) }.getOrDefault(HomeInputMode.ASK)
@@ -2325,6 +2798,6 @@ class BrowserState(private val app: Application) {
         } else {
             pinnedSites.addAll(defaultPinnedSites())
         }
-        state.optJSONArray("chats").each { obj -> chats.add(LocalChat(obj.getString("id"), obj.getString("title"), obj.optLong("time", System.currentTimeMillis())).apply { obj.optJSONArray("finishedReplies")?.let { indices -> for (i in 0 until indices.length()) finishedReplies.add(indices.optInt(i)) }; obj.optJSONArray("messages").each { messages.add(it.getString("role") to it.getString("text")) }; obj.optJSONArray("images").each { image -> imagePreviews[image.optInt("index")] = image.optString("uri") }; obj.optJSONArray("sources").each { sources.add(it.getString("title") to it.getString("url")) } }) }
+        state.optJSONArray("chats").each { obj -> chats.add(LocalChat(obj.getString("id"), obj.getString("title"), obj.optLong("time", System.currentTimeMillis())).apply { pendingReminderPrompt = obj.optString("pendingReminderPrompt"); obj.optJSONArray("finishedReplies")?.let { indices -> for (i in 0 until indices.length()) finishedReplies.add(indices.optInt(i)) }; obj.optJSONArray("messages").each { messages.add(it.getString("role") to it.getString("text")) }; obj.optJSONArray("images").each { image -> imagePreviews[image.optInt("index")] = image.optString("uri") }; obj.optJSONArray("sources").each { sources.add(it.getString("title") to it.getString("url")) } }) }
     }
 }

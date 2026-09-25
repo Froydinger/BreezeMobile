@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
@@ -84,6 +85,7 @@ import android.graphics.Canvas
 import android.graphics.Bitmap
 import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 
 private const val ACTION_PIP_PLAYBACK = "com.froydinger.breeze.PIP_PLAYBACK"
 
@@ -152,6 +154,22 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); handleIncomingIntent(intent) }
     private fun handleIncomingIntent(intent: Intent?) {
+        val authUri = intent?.data
+        if (authUri?.scheme == BuildConfig.AUTH_CALLBACK_URI.substringBefore("://") && authUri.host == "auth-callback") {
+            lifecycleScope.launch {
+                runCatching { browser.cloudAccount.finishAuthCallback(authUri) }
+                    .onSuccess { completed ->
+                        if (completed) {
+                            runCatching { browser.syncCloudNow() }
+                            browser.registerReminderPushIfAllowed()
+                            browser.screen = "account"
+                            browser.notice = "Signed in to your Breeze account."
+                        } else browser.notice = "The sign-in link was not complete. Try signing in again."
+                    }
+                    .onFailure { browser.notice = it.message ?: "Could not finish sign-in. Start again on this phone." }
+            }
+            return
+        }
         when (intent?.action) {
             Intent.ACTION_VIEW -> intent.dataString?.let { url ->
                 val standalone = intent.getBooleanExtra(EXTRA_STANDALONE_PWA, false)
@@ -198,6 +216,14 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             allowFileAccess = false
             allowContentAccess = true
             cacheMode = WebSettings.LOAD_DEFAULT
+        }
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_AUTHENTICATION)) {
+            runCatching {
+                androidx.webkit.WebSettingsCompat.setWebAuthenticationSupport(
+                    webView.settings,
+                    androidx.webkit.WebSettingsCompat.WEB_AUTHENTICATION_SUPPORT_FOR_BROWSER,
+                )
+            }
         }
         val pageProtection = com.froydinger.breeze.browser.ChromiumPageProtection(webView,
             isProtectionEnabled = { url -> !tab.private && state.isSiteProtectionEnabled(url) },
@@ -315,6 +341,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     override fun onStart() { super.onStart(); devFpsTracker?.start(); devFpsTracker?.watchPage(browser.selected?.session); if (!isInPictureInPictureMode) browser.setPictureInPictureMode(false); browser.onAppForegrounded() }
     override fun onResume() {
         super.onResume()
+        browser.rescheduleReminders()
+        browser.registerReminderPushIfAllowed()
         if (!isInPictureInPictureMode) {
             pipPlaybackPendingStop = false
             if (browser.preparingPictureInPicture || browser.isPictureInPicture) browser.setPictureInPictureMode(false)
@@ -433,6 +461,8 @@ private fun pictureInPictureParams(context: android.content.Context, state: Brow
                     state.home()
                 }
                 else if (state.screen == "chat") state.collapseChatOrReturn()
+                else if (state.screen == "account") state.screen = "settings"
+                else if (state.screen in setOf("privacy-policy", "terms-of-service")) state.closeLegalDocument()
                 else if (state.screen != "browser") state.screen = "browser"
                 else state.chromiumGoBack()
             }
@@ -636,7 +666,7 @@ private fun pictureInPictureParams(context: android.content.Context, state: Brow
                             },
                             label = "Browser surfaces",
                         ) { visibleScreen ->
-                            val opaqueSecondary = visibleScreen in setOf("history", "library", "chats", "settings", "reminders", "passwords", "downloads")
+                            val opaqueSecondary = visibleScreen in setOf("history", "library", "chats", "settings", "account", "reminders", "passwords", "downloads", "privacy-policy", "terms-of-service")
                             Box(Modifier.fillMaxSize().then(if (opaqueSecondary) Modifier.background(palette.background) else Modifier)) {
                             when (visibleScreen) {
                                 "blank" -> Box(Modifier.fillMaxSize().background(palette.background))
@@ -645,6 +675,9 @@ private fun pictureInPictureParams(context: android.content.Context, state: Brow
                                 "library" -> LibraryScreen(state, "Bookmarks")
                                 "chats" -> LibraryScreen(state, "Chats")
                                 "settings" -> SettingsScreen(state)
+                                "account" -> AccountScreen(state)
+                                "privacy-policy" -> PrivacyPolicyScreen(onBack = state::closeLegalDocument)
+                                "terms-of-service" -> TermsOfServiceScreen(onBack = state::closeLegalDocument)
                                 "reminders" -> ReminderManagerScreen(state)
                                 "passwords" -> PasswordVaultScreen()
                                 "downloads" -> DownloadsScreen(state)
@@ -682,7 +715,7 @@ private fun pictureInPictureParams(context: android.content.Context, state: Brow
                     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
                         Text("When you send a Nav request, Breeze Cloud and OpenAI receive your prompt and recent chat context. If you attach a page, its title, URL, and readable text can be included. For a YouTube Creator Breakdown, Breeze Cloud may retrieve public captions for that video and send up to 14,000 characters with your request. A photo stays on this device until you tap Send, then it is uploaded with the request.")
                         Text("Voice recordings are sent for transcription; the transcript is then sent to Nav. OpenAI may retain API request data for up to 30 days for abuse prevention.")
-                        Text("Browsing history, bookmarks, and chats are stored locally on this device. Cloud sync is coming soon.")
+                        Text("Browsing history, bookmarks, tabs, chats, and reminders stay on this device unless you sign in and turn on those sync categories. The password vault always stays on this device. Read the Privacy Policy and Terms in Settings.")
                     }
                 },
                 confirmButton = { TextButton(onClick = state::acceptCloudDisclosure) { Text("Agree and continue") } },
@@ -803,7 +836,7 @@ private fun pictureInPictureParams(context: android.content.Context, state: Brow
         ) {
             val backEnabled = state.screen != "browser" || page?.canBack == true
             IconButton(
-                onClick={ if(state.screen == "chat") state.collapseChatOrReturn() else if(state.screen != "browser") state.screen="browser" else state.chromiumGoBack(page) },
+                onClick={ if(state.screen == "chat") state.collapseChatOrReturn() else if(state.screen == "account") state.screen="settings" else if(state.screen in setOf("privacy-policy", "terms-of-service")) state.closeLegalDocument() else if(state.screen != "browser") state.screen="browser" else state.chromiumGoBack(page) },
                 enabled=backEnabled,
                 modifier=Modifier.size(buttonSize),
             ) { Icon(BreezeIcons.ArrowBack,"Back",Modifier.size(iconSize), tint=if (backEnabled) tint else tint.copy(alpha = .32f)) }

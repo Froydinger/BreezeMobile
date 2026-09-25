@@ -63,7 +63,13 @@ fun ReminderManagerScreen(state: BrowserState) {
                         Text("On this phone", style = MaterialTheme.typography.titleMedium, color = ink)
                     }
                     Spacer(Modifier.height(6.dp))
-                    Text("Reminders are encrypted and scheduled on this device. Cloud sync is coming soon.", style = MaterialTheme.typography.bodyMedium, color = muted)
+                    val account = state.cloudAccount
+                    Text(
+                        if (account.signedIn && account.preferences.reminders) "Reminders are saved here and synced to your Breeze account. Local alarms still work without network access."
+                        else "Reminders are saved and scheduled on this device. To sync them, sign in and turn on Reminders under Account & sync.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = muted,
+                    )
                     if (!ReminderScheduler.notificationsAllowed(context)) {
                         Spacer(Modifier.height(10.dp))
                         OutlinedButton(onClick = {

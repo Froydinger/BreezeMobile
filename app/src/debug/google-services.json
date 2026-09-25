@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "134465314953",
+    "project_id": "breeze-mobile-d26fe",
+    "storage_bucket": "breeze-mobile-d26fe.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:134465314953:android:e761aab8e4f9d8544b6658",
+        "android_client_info": {
+          "package_name": "com.froydinger.breeze"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAQkVfyiUAvPMu9aubmrs9SY2UsUPwZ87c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:134465314953:android:71bed20babba3f264b6658",
+        "android_client_info": {
+          "package_name": "com.froydinger.breeze.dev"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAQkVfyiUAvPMu9aubmrs9SY2UsUPwZ87c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

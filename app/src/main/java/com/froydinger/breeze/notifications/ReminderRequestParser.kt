@@ -25,6 +25,21 @@ object ReminderRequestParser {
 
     fun isReminderRequest(text: String): Boolean = prefix.containsMatchIn(text)
 
+    fun appendFollowUp(originalRequest: String, answer: String): String = listOf(originalRequest, answer)
+        .map(String::trim).filter(String::isNotEmpty).joinToString(" ")
+
+    fun missingDetailQuestion(text: String): String {
+        val title = taskTitle(text)
+        if (title.isBlank()) return "What should I remind you to do?"
+        val hasDay = dayWord.containsMatchIn(text)
+        val hasTime = relative.containsMatchIn(text) || clock12.containsMatchIn(text) || clock24.containsMatchIn(text) ||
+            Regex("\\bnoon\\b", RegexOption.IGNORE_CASE).containsMatchIn(text)
+        return when {
+            hasDay && !hasTime -> "What time should I remind you to $title?"
+            else -> "When should I remind you to $title?"
+        }
+    }
+
     /** Preselects the named day when the user still needs to choose a time in the reminder sheet. */
     fun suggestedDueAt(text: String, now: ZonedDateTime = ZonedDateTime.now()): Long? {
         val day = when (dayWord.find(text)?.groupValues?.get(1)?.lowercase()) {

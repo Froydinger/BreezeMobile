@@ -71,8 +71,8 @@ fun FirstRunOnboarding(onFinish: () -> Unit) {
             WelcomePage(
                 BreezeIcons.Shield,
                 "Your browser, your data",
-                "History, bookmarks, tabs, and saved passwords stay on this device. Accounts and cloud sync are coming soon.",
-                "When you send a Nav request, your prompt and any attached page or photo are sent to Breeze Cloud and OpenAI to answer.",
+                "Your browser data stays on this device unless you sign in and turn on individual sync categories. Your password vault stays local.",
+                "Nav requests and anything you attach are sent to Breeze Cloud and OpenAI to answer. Privacy and Terms are in Settings.",
             ),
         )
     }
