@@ -1387,10 +1387,17 @@ class BrowserState(private val app: Application) {
             showCloudDisclosure = true
             return
         }
-        if (chat.messages.isEmpty()) chat.title = when {
-            outgoingPrompt.equals("/youtube", ignoreCase = true) || outgoingPrompt.startsWith("/youtube ", ignoreCase = true) -> "Creator breakdown"
-            outgoingPrompt.equals("/summarize", ignoreCase = true) -> "Summarize ${contextTab?.title ?: "page"}"
-            else -> outgoingPrompt.take(70)
+        val taskRoute = InputRouter.route(outgoingPrompt, InputSurface.HOME) as? InputRoute.RunTask
+        if (chat.messages.isEmpty()) {
+            val pageTitle = contextTab?.title?.takeIf { it.isNotBlank() && it != "New tab" } ?: "page"
+            val taskTitle = when (taskRoute?.task) {
+                NavTask.YOUTUBE -> "Creator breakdown"
+                NavTask.SUMMARIZE -> "Summarize $pageTitle"
+                NavTask.RESEARCH -> "Research $pageTitle"
+                NavTask.FACTCHECK -> "Fact-check $pageTitle"
+                null -> null
+            }
+            chat.title = taskTitle?.let { uniqueChatTitle(it, chat) } ?: outgoingPrompt.take(70)
         }
         val imageMessageIndex = chat.messages.size
         if (attachedImageUri != null) {
@@ -1404,9 +1411,8 @@ class BrowserState(private val app: Application) {
         chat.messages.add("assistant" to "")
         chat.running = true; chat.status = "Connecting to Breeze Cloud…"
         val runId = UUID.randomUUID().toString()
-        val route = InputRouter.route(outgoingPrompt, InputSurface.HOME) as? InputRoute.RunTask
-        val task = route?.task?.slug ?: "chat"
-        val input = route?.prompt?.ifBlank { if (task == "youtube") "Analyze this YouTube page for a creator." else "Summarize the attached page." } ?: outgoingPrompt
+        val task = taskRoute?.task?.slug ?: "chat"
+        val input = taskRoute?.let { it.prompt.ifBlank { it.task.defaultInput() } } ?: outgoingPrompt
         val attached = contextTab.takeIf { includePageContext }
         val attachedUrl = attached?.url.orEmpty()
         val previous = chat.messages.take(assistantIndex - 1).takeLast(10).joinToString("\n") { "${it.first}: ${it.second}" }.takeLast(6500)
@@ -1415,7 +1421,7 @@ class BrowserState(private val app: Application) {
             var imageDelivered = false
             try {
                 var page = ""
-                if (attached != null && attachedUrl.startsWith("http") && attached.session != null) {
+                if (attached != null && isHttpPage(attachedUrl)) {
                     if (task == "youtube") {
                         chat.status = "Checking for video captions…"
                         if (!attached.private && attached.url == attachedUrl && tabs.contains(attached)) {

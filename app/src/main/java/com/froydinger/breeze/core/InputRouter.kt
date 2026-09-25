@@ -15,6 +15,14 @@ enum class NavTask(val slug: String, val needsPrompt: Boolean) {
     RESEARCH("research", true), SUMMARIZE("summarize", false),
     FACTCHECK("factcheck", true), YOUTUBE("youtube", false);
 
+    /** A useful hidden request for a page quick action with no typed prompt. */
+    fun defaultInput(): String = when (this) {
+        RESEARCH -> "Research the topic and key claims of the attached page, then ask if I need anything else."
+        SUMMARIZE -> "Summarize the attached page, then ask if I need anything else."
+        FACTCHECK -> "Fact-check the main verifiable claims in the attached page against current reliable sources, then ask if I need anything else."
+        YOUTUBE -> "Analyze this YouTube video for a creator, then ask if I need anything else."
+    }
+
     companion object {
         /** Desktop-compatible exact slug first, then a unique abbreviated prefix. */
         fun match(token: String): NavTask? {

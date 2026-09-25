@@ -287,16 +287,11 @@ fun NavChatScreen(state: BrowserState, modifier: Modifier = Modifier) {
                 reminderComposerCameFromChat = false
                 showReminderComposer = true
             } else {
-                val pageUrl = quickContextTab?.url.orEmpty()
-                if (pageUrl.isNotBlank()) {
+                if (quickContextTab != null) {
                     state.includePageContext = true
-                    val followUp = when (tool.slug) {
-                        NavTask.YOUTUBE.slug -> "After the creator breakdown, ask if I need anything else."
-                        NavTask.SUMMARIZE.slug -> "After the summary, ask if I need anything else."
-                        NavTask.FACTCHECK.slug -> "After the fact check, ask if I need anything else."
-                        else -> "After the research, ask if I need anything else."
-                    }
-                    val prompt = "/${tool.slug} $pageUrl\n$followUp"
+                    // The URL and page contents travel as attached context. Putting the URL
+                    // into the visible user prompt makes Summarize treat it as the only input.
+                    val prompt = "/${tool.slug}"
                     if (state.activeChat == null) state.startChat(prompt) else state.sendChat(prompt)
                 }
             }
