@@ -1,5 +1,16 @@
 # Android development status
 
+## September 24 direct-download release 0.1.11
+
+- Published signed release [`Breeze-Android-0.1.11-beta.1-arm64.apk`](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.11-beta.1/Breeze-Android-0.1.11-beta.1-arm64.apk) at [GitHub release android-v0.1.11-beta.1](https://github.com/Froydinger/BreezeMobile/releases/tag/android-v0.1.11-beta.1), versionCode 12. SHA-256: `dc6776246d8767cf96fe09228bfc95d77381ae9d2bdbeaacf098fdf375bc1251`. APK signature, alignment, and production signing fingerprint were checked.
+- Fixes the theme-change/Recents lifecycle issue by resolving launcher-alias components from the manifest package and giving the launcher entry and browser activity distinct task affinities. Android Dev version 0.1.11-dev was installed on Pixel 11. Five launch → Home cycles left the browser task in the visible Recents list; no new post-fix fatal crash appeared in the sampled log. The old pre-fix crash remains in device history.
+- Pixel production Breeze remains at versionCode 11 / versionName 0.1.10 and remains the default browser. It currently does not appear in the visible Recents list. The user will install 0.1.11 through the in-app update flow; the release APK was not installed over production.
+- The PWA install flow now detects an HTTPS web app manifest and uses Android `WebAppManager` on API 37+, with Chrome as the fallback on older or unsupported versions. Pages without a manifest still use Add to Home screen. A real PWA install on the Pixel has not been tested end to end.
+- Build and unit checks passed: `:app:testDebugUnitTest`, `:app:assembleDebug`, and `:app:assembleRelease`; APK alignment and signing verification passed. This is not exhaustive feature or website compatibility testing.
+- Android source commit: `924c775`; update manifest commit: `7518741`. The public manifest points to version 0.1.11 and checks on each app start, using cached data offline.
+- The Android lander links to 0.1.11. Website commit: `Froydinger/breezebrowser` `3045a56`; production deploy: `6ab5de04161104b59c109588` on the verified `breezebrowser` Netlify site. Both [breeze.froydinger.design/mobile](https://breeze.froydinger.design/mobile/) and [breeze.froydingermedia.online/mobile](https://breeze.froydingermedia.online/mobile/) returned the 0.1.11 version label and APK link.
+- No Cloudflare Worker files changed. No emulator was started.
+
 ## September 24 direct-download release 0.1.9
 
 - Published signed release [`Breeze-Android-0.1.9-beta.1-arm64.apk`](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.9-beta.1/Breeze-Android-0.1.9-beta.1-arm64.apk) at [GitHub release android-v0.1.9-beta.1](https://github.com/Froydinger/BreezeMobile/releases/tag/android-v0.1.9-beta.1), versionCode 10. SHA-256: `16f99a7c6c1f1a7504e869ea5b772597c16ca92ec192c1c8d11e68a68db2c73a`. Signature fingerprint matches the existing production signer: `8448bcee588513337474ea4ae5f098fdbf35db3644ad6abd01d93be28561c628`.
