@@ -1,0 +1,3 @@
+<resources>
+    <bool name="breeze_twa_provider_enabled">true</bool>
+</resources>
