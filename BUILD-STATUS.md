@@ -1,5 +1,13 @@
 # Android development status
 
+## September 26 Android photo attachment release 0.1.24
+
+- Published signed ARM64 beta [Breeze-Android-0.1.24-beta.1-arm64.apk](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.24-beta.1/Breeze-Android-0.1.24-beta.1-arm64.apk), versionCode 25. SHA-256: `0da6d4a094089dc1a064a1fa0384f8e50899bfe07fb809a60e398ee4635b6a0a`. APK v3 signing and 16 KB native-library alignment passed; signer certificate matches the existing production identity.
+- Fixes chat photo sending: the Android picker result now reaches the stable app-level callback, photos are copied into device-only encrypted storage, the composer shows preparation state and prevents early sends, and the bitmap bounds pass no longer treats BitmapFactory's expected null return as a read failure. The attachment stays available for retry if preparation/send fails. The user's photo is sent only after they tap Send and is not included in cloud sync.
+- `:app:testDebugUnitTest` and `:app:assembleRelease` passed; release lint vital completed as part of the release build. APK package is `com.froydinger.breeze`; version metadata and signature were inspected. Source commit: `5e826a6`; tag: `android-v0.1.24-beta.1`.
+- The public update manifest is advanced to versionCode 25 / 0.1.24. The focused Android download-link commit is `Froydinger/breezebrowser` `6409c5d`; the live `breeze.froydinger.design/` and `/mobile/` pages show the 0.1.24 link and label. Main Breeze on Pixel was not installed over; production remains available through its in-app update flow.
+- The photo-to-live-Cloud send was not re-exercised with a real photo after this fix, so the release/build/signature/link are verified, while that final user-facing send remains for your check after updating.
+
 ## September 26 Search and Aero release 0.1.18
 
 - Published signed prerelease [Breeze-Android-0.1.18-beta.1-arm64.apk](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.18-beta.1/Breeze-Android-0.1.18-beta.1-arm64.apk), versionCode 19. SHA-256: `af900a2b166017bdc0ffcae0c0d3e12e699a77efc2dbdbff54c075af6968746f`. APK v3 signing and zip alignment passed; signer certificate matches the existing production signing identity.
