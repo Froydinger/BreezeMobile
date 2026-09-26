@@ -9,6 +9,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -93,6 +95,18 @@ private const val ACTION_PIP_PLAYBACK = "com.froydinger.breeze.PIP_PLAYBACK"
 const val EXTRA_STANDALONE_PWA = "com.froydinger.breeze.extra.STANDALONE_PWA"
 
 class MainActivity : androidx.fragment.app.FragmentActivity() {
+    private val photoPickerLauncher = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (BuildConfig.DEBUG) android.util.Log.d("BreezePhoto", "Android picker returned image=${uri != null}")
+        if (uri != null) {
+            runCatching {
+                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            browser.queueImage(uri.toString())
+        }
+    }
+    internal fun launchPhotoPicker() {
+        photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+    }
     private var devFpsTracker: DevFpsTracker? = null
     internal val devFps: Int get() = devFpsTracker?.fps ?: 0
     internal fun watchDevPage(session: org.mozilla.geckoview.GeckoSession?) { devFpsTracker?.watchPage(session) }
@@ -425,6 +439,9 @@ private fun pictureInPictureParams(context: android.content.Context, state: Brow
     val palette = if (dark) darkColorScheme(primary=BreezeTeal, onPrimary=Color.White, onSecondary=Color.White, background=Color.Black, surface=Color.Black, onSurface=Color(0xFFF4F4F4), onSurfaceVariant=Color(0xFFB6B6B6), surfaceVariant=Color.Black, outline=Color(0xFF292929), outlineVariant=Color(0xFF191919), secondary=BreezeTeal, surfaceContainer=Color.Black, surfaceContainerHigh=Color.Black) else lightColorScheme(primary=Color(0xFF087C89), onPrimary=Color.White, onSecondary=Color.White, background=Color(0xFFF2F0ED), surface=Color(0xFFFAF9F7), onSurface=Color(0xFF23282B), onSurfaceVariant=Color(0xFF6A7075), surfaceVariant=Color(0xFFE5E6E5), outline=Color(0xFFC5C9CA), secondary=Color(0xFF087C89), surfaceContainer=Color(0xFFF9F8F6), surfaceContainerHigh=Color(0xFFE8E9E7))
     val activity = LocalContext.current as? android.app.Activity
     val context = LocalContext.current
+    // Keep the Android result launcher at the stable app root. Home and Nav animate
+    // independently, so a picker owned by either surface can lose its result callback.
+    val photoAttachmentAction: () -> Unit = { (activity as? MainActivity)?.launchPhotoPicker() }
     val onboardingPreferences = remember(context) { context.getSharedPreferences("breeze_onboarding", android.content.Context.MODE_PRIVATE) }
     var showOnboarding by remember(onboardingPreferences) { mutableStateOf(!onboardingPreferences.getBoolean("complete", false)) }
     var availableUpdate by remember { mutableStateOf<AndroidUpdate?>(null) }
@@ -628,6 +645,7 @@ private fun pictureInPictureParams(context: android.content.Context, state: Brow
                                 ReferenceHomeScreen(
                                     state,
                                     dark,
+                                    photoAction = photoAttachmentAction,
                                     tabUiEntrance = { tabUiEntrance.value },
                                     modifier = homeModifier,
                                     preserveSurfaceViewport = morphingTabWall,
@@ -703,7 +721,7 @@ private fun pictureInPictureParams(context: android.content.Context, state: Brow
                             enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(280)) + fadeIn(tween(180)),
                             exit = slideOutVertically(targetOffsetY = { it }, animationSpec = tween(220)) + fadeOut(tween(150)),
                         ) {
-                            NavChatScreen(state, Modifier.fillMaxSize())
+                            NavChatScreen(state, Modifier.fillMaxSize(), photoAttachmentAction)
                         }
                     }
                 }

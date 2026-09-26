@@ -55,6 +55,7 @@ import com.froydinger.breeze.core.HomeInputMode
 @Composable fun ReferenceHomeScreen(
     state: BrowserState,
     dark: Boolean,
+    photoAction: () -> Unit,
     tabUiEntrance: () -> Float = { 1f },
     modifier: Modifier = Modifier,
     preserveSurfaceViewport: Boolean = false,
@@ -84,10 +85,11 @@ import com.froydinger.breeze.core.HomeInputMode
     LaunchedEffect(logoEntrance) {
         logoEntrance.animateTo(1f, tween(durationMillis=520, easing=FastOutSlowInEasing))
     }
-    val photo=rememberPhotoAttachmentAction(onPhoto=state::queueImage)
     val submitInput = {
         val query = input.trim()
-        if (query.isNotBlank()) {
+        if (state.preparingImageAttachment) {
+            state.notice = "Your photo is still being prepared. Try again in a moment."
+        } else if (query.isNotBlank()) {
             input = ""
             focus.clearFocus()
             state.submitHomeInput(query)
@@ -125,7 +127,7 @@ import com.froydinger.breeze.core.HomeInputMode
                 alpha = progress
                 translationY = -(1f - progress) * 20.dp.toPx()
             }.breezeGlass(32.dp).padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically) {
-                IconButton(onClick={state.updateHomeMode(HomeInputMode.ASK); photo()},modifier=Modifier.size(42.dp)) {
+                IconButton(onClick={state.updateHomeMode(HomeInputMode.ASK); photoAction()},enabled=!state.preparingImageAttachment,modifier=Modifier.size(42.dp)) {
                     Icon(BreezeIcons.PhotoCamera,"Attach a photo",Modifier.size(22.dp),tint=MaterialTheme.colorScheme.onSurface.copy(alpha=.78f))
                 }
                 Spacer(Modifier.width(3.dp))
@@ -134,10 +136,11 @@ import com.froydinger.breeze.core.HomeInputMode
                     keyboardOptions=KeyboardOptions(imeAction=ImeAction.Go),keyboardActions=KeyboardActions(onGo={submitInput()}),
                     decorationBox={inner -> if(input.isEmpty()) Text(if(state.homeMode==HomeInputMode.SEARCH) "Search Spectra, or type a URL" else "Ask Aero, or type a URL",fontSize=15.sp,color=MaterialTheme.colorScheme.onSurface.copy(alpha=.65f),maxLines=1);inner()})
                 if(input.isNotBlank()) {
-                    IconButton(onClick={submitInput()},modifier=Modifier.size(36.dp)) {Icon(BreezeIcons.ArrowForward,if(state.homeMode==HomeInputMode.SEARCH) "Search Spectra or open URL" else "Ask Aero or open URL",Modifier.size(21.dp))}
+                    IconButton(onClick={submitInput()},enabled=!state.preparingImageAttachment,modifier=Modifier.size(36.dp)) {Icon(BreezeIcons.ArrowForward,if(state.homeMode==HomeInputMode.SEARCH) "Search Spectra or open URL" else "Ask Aero or open URL",Modifier.size(21.dp))}
                 }
                 Box(Modifier.padding(horizontal=6.dp).width(.7.dp).height(27.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha=.18f)))
                 VoiceTranscriptionButton(
+                    enabled = !state.preparingImageAttachment,
                     cloudConsentAccepted=state.cloudDisclosureAccepted,
                     onCloudConsentRequired=state::requestCloudDisclosure,
                     onText={recognized -> input=if(input.isBlank()) recognized else "$input $recognized"},
@@ -150,6 +153,12 @@ import com.froydinger.breeze.core.HomeInputMode
                         state.submitHomeInput(query)
                     },
                 )
+            }
+            if (state.preparingImageAttachment) {
+                Row(Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Text("Preparing photo…", Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             // Leave the scene visible, as in the approved home reference.
             Spacer(Modifier.height((screenHeight*.012f).coerceIn(12.dp,16.dp)))

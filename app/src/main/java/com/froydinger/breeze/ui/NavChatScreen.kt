@@ -65,6 +65,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import com.froydinger.breeze.BrowserState
 import com.froydinger.breeze.core.NavTask
+import com.froydinger.breeze.data.LocalChatImageStore
 import com.froydinger.breeze.notifications.ParsedReminderRequest
 import com.froydinger.breeze.notifications.ReminderRepeat
 import com.froydinger.breeze.notifications.ReminderScheduler
@@ -92,7 +93,7 @@ private val chatTools = listOf(
 )
 
 @Composable
-fun NavChatScreen(state: BrowserState, modifier: Modifier = Modifier) {
+fun NavChatScreen(state: BrowserState, modifier: Modifier = Modifier, photoAction: () -> Unit) {
     val chat = state.activeChat
     val context = LocalContext.current
     var draft by remember(chat?.id) { mutableStateOf(chat?.draft.orEmpty()) }
@@ -140,7 +141,6 @@ fun NavChatScreen(state: BrowserState, modifier: Modifier = Modifier) {
         showReminderComposer = true
     }
     var lastChatId by remember { mutableStateOf(chat?.id) }
-    val photoAction = rememberPhotoAttachmentAction(onPhoto = state::queueImage)
     val dark = MaterialTheme.colorScheme.background.red < .3f
     val navAccent = if (dark) Color(0xFF55D1D8) else Color(0xFF087C89)
     val panel = if (dark) Color.Black else Color(0xFFF8F8F7)
@@ -543,7 +543,16 @@ fun NavChatScreen(state: BrowserState, modifier: Modifier = Modifier) {
 
         }
 
+        if (state.preparingImageAttachment) PreparingPhotoAttachment()
         state.pendingImageUri?.let { uri -> PendingImageAttachment(uri, onRemove = state::removePendingImage) }
+        state.photoAttachmentError?.let { message ->
+            Text(
+                message,
+                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
 
         // Single outlined capsule. The send button is flush to the capsule edge like the approved mockup.
         Box(Modifier.fillMaxWidth().heightIn(min = 60.dp)) {
@@ -556,7 +565,7 @@ fun NavChatScreen(state: BrowserState, modifier: Modifier = Modifier) {
                     .padding(start = 18.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-            IconButton(onClick = photoAction, modifier = Modifier.size(42.dp)) {
+    IconButton(onClick = photoAction, enabled = !state.preparingImageAttachment && !requestRunning, modifier = Modifier.size(42.dp)) {
                 Icon(BreezeIcons.PhotoCamera, contentDescription = "Attach a photo", modifier = Modifier.offset(x = (-5).dp), tint = MaterialTheme.colorScheme.onSurface)
             }
             Box(Modifier.weight(1f)) {
@@ -575,7 +584,7 @@ fun NavChatScreen(state: BrowserState, modifier: Modifier = Modifier) {
                 )
             }
             VoiceTranscriptionButton(
-                enabled = chat?.running != true,
+                enabled = chat?.running != true && !state.preparingImageAttachment,
                 cloudConsentAccepted = state.cloudDisclosureAccepted,
                 onCloudConsentRequired = state::requestCloudDisclosure,
                 onText = { recognized -> draft = if (draft.isBlank()) recognized else "$draft\n$recognized" },
@@ -589,7 +598,7 @@ fun NavChatScreen(state: BrowserState, modifier: Modifier = Modifier) {
             )
                 IconButton(
                     onClick = { keyboardController?.hide(); submitNavChat(draft, selectedTool, requestRunning, state) { draft = "" } },
-                    enabled = (!selectedTool.needsPrompt || draft.isNotBlank() || state.pendingImageUri != null) && (draft.isNotBlank() || state.pendingImageUri != null || selectedTool.slug.isNotEmpty()) && !requestRunning,
+                    enabled = !state.preparingImageAttachment && (!selectedTool.needsPrompt || draft.isNotBlank() || state.pendingImageUri != null) && (draft.isNotBlank() || state.pendingImageUri != null || selectedTool.slug.isNotEmpty()) && !requestRunning,
                     modifier = Modifier.size(60.dp).clip(CircleShape).border(1.5.dp, navAccent, CircleShape),
                 ) {
                     Icon(BreezeIcons.Send, contentDescription = "Send", tint = navAccent, modifier = Modifier.size(27.dp))
@@ -693,7 +702,7 @@ private fun CopyMessageButton(text: String, state: BrowserState) {
 }
 
 private fun submitNavChat(draft: String, tool: ChatTool, running: Boolean, state: BrowserState, clear: () -> Unit) {
-    if (running || (draft.isBlank() && state.pendingImageUri == null && (tool.slug.isEmpty() || tool.needsPrompt))) return
+    if (running || state.preparingImageAttachment || (draft.isBlank() && state.pendingImageUri == null && (tool.slug.isEmpty() || tool.needsPrompt))) return
     if (tool.localReminder) { state.sendReminderRequest(draft.trim()); clear(); return }
     val payload = if (tool.slug.isEmpty()) draft.trim() else "/${tool.slug} ${draft.trim()}".trim()
     if (state.activeChat == null) state.startChat(payload) else state.sendChat(payload)
@@ -712,18 +721,28 @@ private fun PendingImageAttachment(uri: String, onRemove: () -> Unit) {
 }
 
 @Composable
+private fun PreparingPhotoAttachment() {
+    Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)) {
+        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+            Text("Preparing photo…", Modifier.padding(start = 12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
 private fun ChatImagePreview(uriText: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val imageStore = remember(context) { LocalChatImageStore(context) }
     val bitmap by produceState<Bitmap?>(initialValue = null, uriText) {
         value = withContext(Dispatchers.IO) {
             runCatching {
-                val uri = Uri.parse(uriText)
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+                imageStore.open(uriText)?.use { BitmapFactory.decodeStream(it, null, bounds) }
                 var sample = 1
                 while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 720 && bounds.outWidth > 0 && bounds.outHeight > 0) sample *= 2
                 val options = BitmapFactory.Options().apply { inSampleSize = sample }
-                context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+                imageStore.open(uriText)?.use { BitmapFactory.decodeStream(it, null, options) }
             }.getOrNull()
         }
     }

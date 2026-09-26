@@ -16,6 +16,7 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import com.froydinger.breeze.core.*
 import com.froydinger.breeze.cloud.NavSseClient
 import com.froydinger.breeze.data.EncryptedStateStore
+import com.froydinger.breeze.data.LocalChatImageStore
 import com.froydinger.breeze.data.TabThumbnailStore
 import com.froydinger.breeze.sync.CloudAccountRepository
 import com.froydinger.breeze.sync.CloudSyncCoordinator
@@ -60,6 +61,8 @@ class BreezeApplication : Application() {
         super.onTrimMemory(level)
     }
 }
+private class ChatPhotoReadException(cause: Throwable) : Exception(cause)
+
 class LiveTab(val id: String = UUID.randomUUID().toString(), val private: Boolean = false) {
     var url by mutableStateOf("")
     var title by mutableStateOf("New tab")
@@ -188,6 +191,10 @@ class BrowserState(private val app: Application) {
         private set
     private var pendingCloudPrompt: String? = null
     var pendingImageUri by mutableStateOf<String?>(null)
+        private set
+    var preparingImageAttachment by mutableStateOf(false)
+        private set
+    var photoAttachmentError by mutableStateOf<String?>(null)
         private set
     private var pendingImageRevision = 0
     var theme by mutableStateOf(ThemeMode.SYSTEM)
@@ -354,6 +361,7 @@ class BrowserState(private val app: Application) {
     private var writeBlocked = false
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val store = EncryptedStateStore(app)
+    private val chatImages = LocalChatImageStore(app)
     val cloudAccount = CloudAccountRepository(app, BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_ANON_KEY, BuildConfig.AUTH_CALLBACK_URI)
     var legalReturnScreen by mutableStateOf("settings")
         private set
@@ -420,6 +428,7 @@ class BrowserState(private val app: Application) {
         scope.launch {
             try {
                 restore(withContext(Dispatchers.IO) { store.load() })
+                pruneChatImageFiles()
                 reminders.forEach { com.froydinger.breeze.notifications.ReminderScheduler.schedule(app, it) }
             }
             catch (e: Exception) { writeBlocked = true; notice = "Saved data could not be opened. It has been preserved. ${e.javaClass.simpleName}" }
@@ -1202,6 +1211,7 @@ class BrowserState(private val app: Application) {
             activeChat = null
             if (screen == "chat") screen = "browser"
         }
+        pruneChatImageFiles()
         persist()
     }
     fun startChat(prompt: String = "") {
@@ -1449,15 +1459,63 @@ class BrowserState(private val app: Application) {
     fun requestCloudDisclosure() { showCloudDisclosure = true }
 
     fun queueImage(uri: String) {
+        if (BuildConfig.DEBUG) android.util.Log.d("BreezePhoto", "Chat received picker result; source=${Uri.parse(uri).authority}; private=${selected?.private == true}")
+        if (selected?.private == true) {
+            photoAttachmentError = "Photos can’t be attached in private browsing."
+            notice = photoAttachmentError.orEmpty()
+            return
+        }
+        if (preparingImageAttachment) return
+        val revision = ++pendingImageRevision
+        // Render the selected item right away. The picker URI remains readable while
+        // Android's result grant is active, and is replaced by our encrypted local URI
+        // as soon as the copy finishes.
         pendingImageUri = uri
-        pendingImageRevision += 1
+        preparingImageAttachment = true
+        photoAttachmentError = null
         if (screen != "chat") startChat()
+        scope.launch {
+            try {
+                val savedUri = withContext(Dispatchers.IO) { chatImages.copySelectedPhoto(Uri.parse(uri)) }
+                if (revision != pendingImageRevision) {
+                    chatImages.delete(savedUri)
+                    return@launch
+                }
+                pendingImageUri = savedUri
+                preparingImageAttachment = false
+                photoAttachmentError = null
+                if (BuildConfig.DEBUG) android.util.Log.d("BreezePhoto", "Local encrypted photo save completed")
+                pruneChatImageFiles()
+            } catch (cancelled: CancellationException) {
+                if (revision == pendingImageRevision) preparingImageAttachment = false
+                throw cancelled
+            } catch (error: Exception) {
+                if (revision == pendingImageRevision) {
+                    if (pendingImageUri == uri) pendingImageUri = null
+                    preparingImageAttachment = false
+                    val failure = error.message ?: "Breeze couldn’t save that photo. Choose it again."
+                    photoAttachmentError = failure
+                    if (BuildConfig.DEBUG) {
+                        val causeType = generateSequence(error as Throwable?) { it.cause }.lastOrNull()?.javaClass?.simpleName
+                        android.util.Log.w("BreezePhoto", "Local photo save failed: $failure; cause=$causeType")
+                    }
+                    notice = failure
+                }
+            }
+        }
     }
     fun removePendingImage() {
         pendingImageUri = null
+        preparingImageAttachment = false
+        photoAttachmentError = null
         pendingImageRevision += 1
+        pruneChatImageFiles()
     }
     fun sendChat(prompt: String) {
+        if (preparingImageAttachment) {
+            notice = "Your photo is still being prepared. Try again in a moment."
+            return
+        }
         val attachedImageUri = pendingImageUri
         val attachmentRevision = pendingImageRevision
         val outgoingPrompt = prompt.trim().ifBlank { if (attachedImageUri != null) "What is in this image?" else return }
@@ -1543,7 +1601,16 @@ class BrowserState(private val app: Application) {
                 val context = listOf(priorContext, page).filter { it.isNotBlank() }.joinToString("\n\n").take(19500)
                 val request = JSONObject().put("chatId", chat.id).put("turnId", UUID.randomUUID().toString()).put("runId", runId)
                     .put("idempotencyKey", runId).put("task", task).put("input", input.take(12000)).put("context", context)
-                if (attachedImageUri != null) request.put("image", readImageDataUrl(attachedImageUri))
+                if (attachedImageUri != null) {
+                    val imageData = try {
+                        readImageDataUrl(attachedImageUri)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        throw ChatPhotoReadException(error)
+                    }
+                    request.put("image", imageData)
+                }
                 while (request.toString().toByteArray(Charsets.UTF_8).size > 5_300_000 && request.optString("context").isNotEmpty()) {
                     request.put("context", request.optString("context").dropLast(1000))
                 }
@@ -1592,6 +1659,8 @@ class BrowserState(private val app: Application) {
                 if (!terminal) chat.status = "The connection ended early. You can try again."
             } catch (cancelled: CancellationException) {
                 chat.status = "Stopped"; throw cancelled
+            } catch (error: ChatPhotoReadException) {
+                chat.status = "The photo couldn't be prepared. It's still attached, so you can retry or remove it."
             } catch (error: Exception) {
                 chat.status = "Could not connect to Breeze Cloud. ${error.message ?: "Try again."}"
             } finally {
@@ -1607,6 +1676,7 @@ class BrowserState(private val app: Application) {
                 chat.running = false
                 if (chat.messages.getOrNull(assistantIndex)?.second.isNullOrEmpty()) chat.messages.removeAt(assistantIndex)
                 persist()
+                pruneChatImageFiles()
             }
         }
     }
@@ -1895,18 +1965,27 @@ class BrowserState(private val app: Application) {
         return uri.scheme in listOf("http", "https") && !uri.host.isNullOrBlank()
     }
 
-    /** Encode a user-selected photo for the mobile Worker without writing its bytes to disk. */
+    private fun pruneChatImageFiles() {
+        val retained = buildSet {
+            pendingImageUri?.let(::add)
+            chats.forEach { chat -> addAll(chat.imagePreviews.values) }
+        }
+        chatImages.removeUnreferenced(retained)
+    }
+
+    /** Encode a device-only encrypted chat photo for the mobile Worker. */
     private suspend fun readImageDataUrl(uriText: String): String = withContext(Dispatchers.IO) {
-        val uri = Uri.parse(uriText)
-        val resolver = app.contentResolver
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        val boundsStream = chatImages.open(uriText)
             ?: throw IOException("The selected photo is no longer available. Please attach it again.")
+        // BitmapFactory intentionally returns null when inJustDecodeBounds is set;
+        // it only fills outWidth/outHeight. Do not treat that null as a missing photo.
+        boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IOException("The selected file is not a readable image.")
         var sample = 1
         while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 2048) sample *= 2
         val decoded = BitmapFactory.Options().apply { inSampleSize = sample }
-        val source = resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, decoded) }
+        val source = chatImages.open(uriText)?.use { BitmapFactory.decodeStream(it, null, decoded) }
             ?: throw IOException("The selected photo could not be opened. Please attach it again.")
         val bitmap: Bitmap = if (maxOf(source.width, source.height) > 2048) {
             val ratio = 2048f / maxOf(source.width, source.height)
@@ -2311,10 +2390,13 @@ class BrowserState(private val app: Application) {
         runCatching { privateProfileCleaner?.invoke() }
         reminders.forEach { com.froydinger.breeze.notifications.ReminderScheduler.cancel(app, it.id) }
         chats.forEach { it.job?.cancel() }
+        pendingImageUri = null
+        preparingImageAttachment = false
         bookmarks.clear()
         history.clear()
         reminders.clear()
         chats.clear()
+        pruneChatImageFiles()
         activeChat = null
         contextTabId = null
         selectedId = ""
@@ -2653,6 +2735,7 @@ class BrowserState(private val app: Application) {
                 }
                 chats.sortByDescending { it.time }
                 activeChat?.takeIf { chat -> chats.none { it.id == chat.id } }?.let { activeChat = null }
+                pruneChatImageFiles()
             }
             "reminders" -> {
                 val previousIds = reminders.mapTo(mutableSetOf()) { it.id }
