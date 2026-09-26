@@ -1,5 +1,12 @@
 # Android development status
 
+## September 26 Search and Aero release 0.1.18
+
+- Published signed prerelease [Breeze-Android-0.1.18-beta.1-arm64.apk](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.18-beta.1/Breeze-Android-0.1.18-beta.1-arm64.apk), versionCode 19. SHA-256: `af900a2b166017bdc0ffcae0c0d3e12e699a77efc2dbdbff54c075af6968746f`. APK v3 signing and zip alignment passed; signer certificate matches the existing production signing identity.
+- Includes the mobile Search/Aero update: Spectra Search is the default, the Search / Ask choice is remembered, and Ask opens Aero chat. The all-tabs animation cleanup is not included.
+- Release build `:app:assembleRelease` succeeded. APK package/version/signature were inspected. The update manifest is set to versionCode 19 / 0.1.18; phone-side update prompting and installation were not exercised in this pass.
+- Android source version commit: `9a48017`; release tag: `android-v0.1.18-beta.1`. The Android lander link is being updated separately as part of this release.
+
 ## September 25 update-flow test build 0.1.17
 
 - Published signed prerelease [Breeze-Android-0.1.17-beta.1-arm64.apk](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.17-beta.1/Breeze-Android-0.1.17-beta.1-arm64.apk), versionCode 18. This is a version-only test build with no feature changes. SHA-256: `7a256d15c7f6920b1b4c6b8c6c9b2992085e34bd22b964960bc371ff6dce1e04`. APK v3 signing and zip alignment passed; certificate matches the existing production signer.
