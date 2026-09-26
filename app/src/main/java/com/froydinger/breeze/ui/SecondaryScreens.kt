@@ -578,7 +578,7 @@ private fun PrivacySettingsCard(state: BrowserState) {
         SettingsDivider()
         SettingsToggleRow(BreezeIcons.Lock, "Block all cookies", "May sign you out or break site features", state.blockAllCookies, onChange = { state.updateBlockAllCookies(it) })
         SettingsDivider()
-        SettingsToggleRow(BreezeIcons.AutoAwesome, "Nav cloud access", "Prompts and selected context go to Breeze Cloud and OpenAI", state.cloudDisclosureAccepted, onChange = { if (it) state.requestCloudDisclosure() else state.revokeCloudDisclosure() })
+        SettingsToggleRow(BreezeIcons.AutoAwesome, "Aero cloud access", "Prompts and selected context go to Breeze Cloud and OpenAI", state.cloudDisclosureAccepted, onChange = { if (it) state.requestCloudDisclosure() else state.revokeCloudDisclosure() })
         SettingsDivider()
         SettingsToggleRow(BreezeIcons.Lock, "HTTPS upgrades", "", state.httpsOnly, onChange = { state.updateHttpsOnly(it) })
     }
@@ -660,9 +660,8 @@ private fun GeneralSettingsCard(state: BrowserState) {
 @Composable
 private fun HomeOptionsCard(state: BrowserState) {
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(17.dp)).background(MaterialTheme.colorScheme.surface).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(17.dp))) {
-        SettingsToggleRow(BreezeIcons.AutoAwesome, "Home field", "Choose whether the new tab field asks Nav or searches", checked = state.homeMode == HomeInputMode.ASK, onLabel = "Ask", onChange = {
-            state.homeMode = if (it) HomeInputMode.ASK else HomeInputMode.SEARCH
-            state.persist()
+        SettingsToggleRow(BreezeIcons.AutoAwesome, "Home field", "Choose whether the new tab field asks Aero or searches Spectra directly", checked = state.homeMode == HomeInputMode.ASK, onLabel = "Ask", onChange = {
+            state.updateHomeMode(if (it) HomeInputMode.ASK else HomeInputMode.SEARCH)
         })
         SettingsDivider()
         SettingsToggleRow(BreezeIcons.Palette, "Liquid glass", "Use translucent glass surfaces", state.glass, onChange = {

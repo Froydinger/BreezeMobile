@@ -58,10 +58,10 @@ data class NavStreamEvent(
             val eventId = value.optLong("eventId", -1L)
             val wireType = value.optString("type", "")
             if (version != 1 || runId.isBlank() || eventId <= 0L || wireType.isBlank()) {
-                throw IOException("Invalid Nav event envelope")
+                throw IOException("Invalid Aero event envelope")
             }
             if (expectedRunId != null && runId != expectedRunId) {
-                throw IOException("Nav event run ID mismatch")
+                throw IOException("Aero event run ID mismatch")
             }
             val payload = JSONObject()
             val keys = value.keys()
@@ -89,7 +89,7 @@ class NavSseClient(
         val runId = request.optString("runId", "")
         if (!runId.matches(Regex("[A-Za-z0-9_-]{1,128}"))) throw IllegalArgumentException("Request runId is missing or invalid")
         val token = tokenProvider().trim()
-        if (token.isEmpty() || token.any { it.isWhitespace() }) throw IOException("Nav authentication is unavailable")
+        if (token.isEmpty() || token.any { it.isWhitespace() }) throw IOException("Aero authentication is unavailable")
 
         withContext(Dispatchers.IO) {
             currentCoroutineContext().ensureActive()
@@ -130,7 +130,7 @@ class NavSseClient(
                 }
                 val contentType = activeConnection.contentType.orEmpty()
                 if (!contentType.substringBefore(';').trim().equals("text/event-stream", ignoreCase = true)) {
-                    throw IOException("Nav returned an unexpected response type")
+                    throw IOException("Aero returned an unexpected response type")
                 }
                 val stream = activeConnection.inputStream
                 val reader = PushbackReader(BufferedReader(InputStreamReader(stream, Charsets.UTF_8)), 1)
@@ -167,10 +167,10 @@ class NavSseClient(
             val envelope = try {
                 JSONObject(data)
             } catch (_: JSONException) {
-                throw IOException("Nav stream contained invalid event JSON")
+                throw IOException("Aero stream contained invalid event JSON")
             }
             val event = NavStreamEvent.parse(envelope, expectedRunId)
-            if (event.eventId <= previousEventId) throw IOException("Nav event IDs are not increasing")
+            if (event.eventId <= previousEventId) throw IOException("Aero event IDs are not increasing")
             previousEventId = event.eventId
             currentCoroutineContext().ensureActive()
             onEvent(event.toJsonObject())
@@ -180,7 +180,7 @@ class NavSseClient(
             currentCoroutineContext().ensureActive()
             val line = readBoundedLine(reader, MAX_LINE_CHARS) ?: break
             eventChars += line.length + 1
-            if (eventChars > MAX_EVENT_CHARS) throw IOException("Nav stream event exceeded the size limit")
+            if (eventChars > MAX_EVENT_CHARS) throw IOException("Aero stream event exceeded the size limit")
             if (line.isEmpty()) {
                 dispatch()
                 continue
@@ -208,7 +208,7 @@ class NavSseClient(
                     return result.toString()
                 }
                 else -> {
-                    if (result.length >= maxChars) throw IOException("Nav stream line exceeded the size limit")
+                    if (result.length >= maxChars) throw IOException("Aero stream line exceeded the size limit")
                     result.append(code.toChar())
                 }
             }
@@ -243,7 +243,7 @@ class NavSseClient(
         }
 
         private fun httpErrorMessage(status: Int, body: String?): String {
-            val fallback = "Nav request failed (HTTP $status)"
+            val fallback = "Aero request failed (HTTP $status)"
             if (status != 429 || body == null) return fallback
 
             val quotaError = try {
@@ -259,9 +259,9 @@ class NavSseClient(
             val remaining = quotaError.boundedCount("remaining")
             if (used != null && limit != null) {
                 val remainingText = remaining?.let { ", $it remaining" }.orEmpty()
-                return "Nav daily request limit reached ($used of $limit used$remainingText). It resets at UTC midnight."
+                return "Aero daily request limit reached ($used of $limit used$remainingText). It resets at UTC midnight."
             }
-            return "Nav daily request limit reached. It resets at UTC midnight."
+            return "Aero daily request limit reached. It resets at UTC midnight."
         }
 
         private fun JSONObject.boundedCount(key: String): Int? {
@@ -275,12 +275,12 @@ class NavSseClient(
             val uri = try {
                 URI(value)
             } catch (_: Exception) {
-                throw IllegalArgumentException("Nav endpoint is invalid")
+                throw IllegalArgumentException("Aero endpoint is invalid")
             }
             require(uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank() && uri.userInfo == null) {
-                "Nav endpoint must be an HTTPS URL"
+                "Aero endpoint must be an HTTPS URL"
             }
-            require(uri.fragment == null) { "Nav endpoint must not include a fragment" }
+            require(uri.fragment == null) { "Aero endpoint must not include a fragment" }
             return uri.toURL()
         }
     }

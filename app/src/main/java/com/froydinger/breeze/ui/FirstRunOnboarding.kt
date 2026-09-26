@@ -64,7 +64,7 @@ fun FirstRunOnboarding(onFinish: () -> Unit) {
             ),
             WelcomePage(
                 BreezeIcons.AutoAwesome,
-                "Ask Nav",
+                "Ask Aero",
                 "Chat normally, or choose Research, Summarize, Fact check, YouTube, or Reminder above the message box.",
                 "Attach the page you are viewing or add a photo when it helps.",
             ),
@@ -72,7 +72,7 @@ fun FirstRunOnboarding(onFinish: () -> Unit) {
                 BreezeIcons.Shield,
                 "Your browser, your data",
                 "Your browser data stays on this device unless you sign in and turn on individual sync categories. Your password vault stays local.",
-                "Nav requests and anything you attach are sent to Breeze Cloud and OpenAI to answer. Privacy and Terms are in Settings.",
+                "Aero requests and anything you attach are sent to Breeze Cloud and OpenAI to answer. Privacy and Terms are in Settings.",
             ),
         )
     }
@@ -120,7 +120,7 @@ fun FirstRunOnboarding(onFinish: () -> Unit) {
                         color = accent.copy(alpha = if (dark) .16f else .10f),
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            if (item.title == "Ask Nav") {
+                            if (item.title == "Ask Aero") {
                                 NavMark(62.dp)
                             } else {
                                 Icon(item.icon, contentDescription = null, tint = accent, modifier = Modifier.size(46.dp))

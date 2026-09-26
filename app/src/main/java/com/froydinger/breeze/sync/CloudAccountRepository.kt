@@ -138,7 +138,7 @@ class CloudAccountRepository(
         savePendingVerifier(verifier)
         val challenge = challenge(verifier)
         val callback = URLEncoder.encode(redirectUri, Charsets.UTF_8.name())
-        val url = "$projectUrl/auth/v1/authorize?provider=google&redirect_to=$callback&code_challenge=$challenge&code_challenge_method=s256"
+        val url = "$projectUrl/auth/v1/authorize?provider=google&redirect_to=$callback&code_challenge=$challenge&code_challenge_method=s256&prompt=select_account"
         CustomTabsIntent.Builder().build().launchUrl(activity, Uri.parse(url))
     }
 

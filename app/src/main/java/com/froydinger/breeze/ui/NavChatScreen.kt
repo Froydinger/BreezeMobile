@@ -83,7 +83,7 @@ private data class ChatTool(
     val localReminder: Boolean = false,
 )
 private val chatTools = listOf(
-    ChatTool("Nav chat", "", false, BreezeIcons.AutoAwesome),
+    ChatTool("Aero chat", "", false, BreezeIcons.AutoAwesome),
     ChatTool("Research", NavTask.RESEARCH.slug, true, BreezeIcons.Search),
     ChatTool("Summarize", NavTask.SUMMARIZE.slug, false, BreezeIcons.FileText),
     ChatTool("Fact check", NavTask.FACTCHECK.slug, true, BreezeIcons.SearchCheck),
@@ -269,7 +269,7 @@ fun NavChatScreen(state: BrowserState, modifier: Modifier = Modifier) {
         Row(Modifier.fillMaxWidth().height(54.dp), verticalAlignment = Alignment.CenterVertically) {
             NavMark(34.dp, glowing=chat?.running==true)
             Spacer(Modifier.width(12.dp))
-            Text("Nav", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+            Text("Aero", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
             IconButton(onClick = { state.screen = "history" }, modifier = Modifier.size(44.dp)) {
                 Icon(BreezeIcons.Clock, contentDescription = "Chat history", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -397,7 +397,7 @@ fun NavChatScreen(state: BrowserState, modifier: Modifier = Modifier) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     NavMark(23.dp, glowing=true)
                                     Spacer(Modifier.width(12.dp))
-                                    Text("Nav path", style = MaterialTheme.typography.titleSmall)
+                                    Text("Aero path", style = MaterialTheme.typography.titleSmall)
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Box(Modifier.padding(start = 3.dp).size(17.dp).border(2.dp, navAccent, CircleShape), contentAlignment = Alignment.Center) {
@@ -485,7 +485,7 @@ fun NavChatScreen(state: BrowserState, modifier: Modifier = Modifier) {
                         Spacer(Modifier.width(7.dp))
                         Text(selectedTool.label, style = MaterialTheme.typography.bodySmall, maxLines = 1)
                         Spacer(Modifier.width(7.dp))
-                        Icon(BreezeIcons.ExpandMore, contentDescription = "Choose Nav tool", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(BreezeIcons.ExpandMore, contentDescription = "Choose Aero tool", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 DropdownMenu(expanded = toolMenu, onDismissRequest = { toolMenu = false }) {

@@ -77,7 +77,7 @@ private object LogoBitmaps {
 @Composable fun NavMark(size:Dp=32.dp, glowing:Boolean=false) {
     val context = LocalContext.current
     val logo = remember(context.applicationContext) { LogoBitmaps.get(context, R.drawable.nav_logo) }
-    Image(bitmap=logo, contentDescription="Nav", modifier=Modifier.size(size).drawBehind {
+    Image(bitmap=logo, contentDescription="Aero", modifier=Modifier.size(size).drawBehind {
         if(glowing) drawCircle(Brush.radialGradient(listOf(BreezeTeal.copy(alpha=.42f), Color.Transparent), radius=this.size.maxDimension*.8f), radius=this.size.maxDimension*.8f)
     }, filterQuality=FilterQuality.High)
 }

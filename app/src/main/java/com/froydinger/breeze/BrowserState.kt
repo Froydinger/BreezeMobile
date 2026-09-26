@@ -191,7 +191,8 @@ class BrowserState(private val app: Application) {
         private set
     private var pendingImageRevision = 0
     var theme by mutableStateOf(ThemeMode.SYSTEM)
-    var homeMode by mutableStateOf(HomeInputMode.ASK)
+    var homeMode by mutableStateOf(HomeInputMode.SEARCH)
+    private var homeModeChosen by mutableStateOf(false)
     var engine by mutableStateOf(SearchEngine.SPECTRA)
     var wallpaper by mutableStateOf("teal_facets")
     var glass by mutableStateOf(true)
@@ -717,12 +718,36 @@ class BrowserState(private val app: Application) {
         }
     }
     fun submit(text: String, explicitSearch: Boolean = false) {
-        when (val result = InputRouter.route(text, if (isHomePage) InputSurface.HOME else InputSurface.WEBPAGE, homeMode, engine, explicitSearch)) {
+        val result = if (isHomePage) {
+            if (homeMode == HomeInputMode.SEARCH) InputRouter.routeSpectraOnly(text)
+            else InputRouter.route(text, InputSurface.HOME, homeMode, engine, explicitSearch)
+        } else {
+            // The page URL bar is only for addresses and Spectra searches. Nav has its own button.
+            InputRouter.routeSpectraOnly(text)
+        }
+        when (result) {
             is InputRoute.OpenUrl -> navigate(result.url)
             is InputRoute.Search -> navigate(result.url)
             is InputRoute.StartChat -> startChat(result.prompt)
             is InputRoute.RunTask -> startChat("/${result.task.slug} ${result.prompt}".trim())
             null -> Unit
+        }
+    }
+    fun updateHomeMode(mode: HomeInputMode) {
+        if (homeMode == mode && homeModeChosen) return
+        homeMode = mode
+        homeModeChosen = true
+        persist()
+    }
+    fun submitHomeInput(text: String) {
+        if (homeMode == HomeInputMode.ASK) {
+            submit(text)
+            return
+        }
+        when (val result = InputRouter.routeSpectraOnly(text)) {
+            is InputRoute.OpenUrl -> navigate(result.url)
+            is InputRoute.Search -> navigate(result.url)
+            else -> Unit
         }
     }
     fun openExternalUrl(url: String, standalonePwa: Boolean = false) {
@@ -1251,7 +1276,7 @@ class BrowserState(private val app: Application) {
         val excerpt = selectedText.trim().take(6000)
         if (excerpt.isBlank() || screen != "chat") return
         if (activeChat?.running == true) {
-            notice = "Nav is still answering. Try the selected text again when it’s done."
+            notice = "Aero is still answering. Try the selected text again when it’s done."
             return
         }
         sendChat("Explain this selected text from the current page:\n\n$excerpt")
@@ -1406,7 +1431,7 @@ class BrowserState(private val app: Application) {
         val prompt = pendingCloudPrompt
         pendingCloudPrompt = null
         if (!prompt.isNullOrBlank()) sendChat(prompt)
-        else notice = "Nav is ready. Your prompt and any attached context are sent only when you choose Send."
+        else notice = "Aero is ready. Your prompt and any attached context are sent only when you choose Send."
     }
 
     fun declineCloudDisclosure() {
@@ -1418,7 +1443,7 @@ class BrowserState(private val app: Application) {
     fun revokeCloudDisclosure() {
         cloudDisclosureAccepted = false
         privacyPreferences.edit().putBoolean("cloud_ai_disclosure_accepted", false).apply()
-        notice = "Nav cloud access is paused until you agree again."
+        notice = "Aero cloud access is paused until you agree again."
     }
 
     fun requestCloudDisclosure() { showCloudDisclosure = true }
@@ -2665,7 +2690,7 @@ class BrowserState(private val app: Application) {
         put("reminders", JSONArray().apply { reminders.forEach { put(JSONObject().put("id", it.id).put("title", it.title).put("dueAt", it.dueAt).put("repeat", it.repeat.name).put("repeatDayOfMonth", it.repeatDayOfMonth).put("deliveredAt", it.deliveredAt ?: JSONObject.NULL)) } })
         put("downloads", JSONArray().apply { downloads.forEach { put(JSONObject().put("id",it.id).put("name",it.name).put("uri",it.uri).put("time",it.time)) } })
         put("schema", 1); put("selectedId", selected?.takeUnless { it.private }?.id ?: "")
-        put("theme", theme.name); put("homeMode", homeMode.name); put("engine", engine.id); put("wallpaper", wallpaper); put("glass", glass); put("protection", trackingProtection)
+        put("theme", theme.name); put("homeMode", homeMode.name); put("homeModeChosen", homeModeChosen); put("engine", engine.id); put("wallpaper", wallpaper); put("glass", glass); put("protection", trackingProtection)
         put("tabs", JSONArray().apply {
             tabs.filterNot { it.private }.forEach { tab ->
                 put(JSONObject()
@@ -2728,7 +2753,10 @@ class BrowserState(private val app: Application) {
         }
         httpsOnly = state.optBoolean("httpsOnly", true)
         theme = runCatching { ThemeMode.valueOf(state.optString("theme")) }.getOrDefault(ThemeMode.SYSTEM)
-        homeMode = runCatching { HomeInputMode.valueOf(state.optString("homeMode")) }.getOrDefault(HomeInputMode.ASK)
+        val savedHomeMode = runCatching { HomeInputMode.valueOf(state.optString("homeMode")) }.getOrDefault(HomeInputMode.SEARCH)
+        homeModeChosen = state.optBoolean("homeModeChosen", false)
+        // Older versions wrote ASK as the default even when the user never chose it.
+        homeMode = if (homeModeChosen) savedHomeMode else HomeInputMode.SEARCH
         engine = SearchEngine.fromId(state.optString("engine")); wallpaper = state.optString("wallpaper", "teal_facets"); glass = state.optBoolean("glass", true); trackingProtection = state.optBoolean("protection", true)
         state.optJSONObject("siteProtectionOverrides")?.let { overrides ->
             val keys = overrides.keys()

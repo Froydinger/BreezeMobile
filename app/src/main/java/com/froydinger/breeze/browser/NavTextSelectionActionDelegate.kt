@@ -32,7 +32,7 @@ class NavTextSelectionActionDelegate(
                 item.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
             }
             ACTION_ASK_NAV -> {
-                item.title = "Ask Nav"
+                item.title = "Ask Aero"
                 item.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
             }
             else -> super.prepareAction(id, item)

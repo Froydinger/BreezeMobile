@@ -721,11 +721,11 @@ private fun pictureInPictureParams(context: android.content.Context, state: Brow
             }
             if (state.showCloudDisclosure && !state.isPictureInPicture) AlertDialog(
                 onDismissRequest = state::declineCloudDisclosure,
-                title = { Text("Before Nav connects") },
+                title = { Text("Before Aero connects") },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                        Text("When you send a Nav request, Breeze Cloud and OpenAI receive your prompt and recent chat context. If you attach a page, its title, URL, and readable text can be included. For a YouTube Creator Breakdown, Breeze Cloud may retrieve public captions for that video and send up to 14,000 characters with your request. A photo stays on this device until you tap Send, then it is uploaded with the request.")
-                        Text("Voice recordings are sent for transcription; the transcript is then sent to Nav. OpenAI may retain API request data for up to 30 days for abuse prevention.")
+                        Text("When you send an Aero request, Breeze Cloud and OpenAI receive your prompt and recent chat context. If you attach a page, its title, URL, and readable text can be included. For a YouTube Creator Breakdown, Breeze Cloud may retrieve public captions for that video and send up to 14,000 characters with your request. A photo stays on this device until you tap Send, then it is uploaded with the request.")
+                        Text("Voice recordings are sent for transcription; the transcript is then sent to Aero. OpenAI may retain API request data for up to 30 days for abuse prevention.")
                         Text("Browsing history, bookmarks, tabs, chats, and reminders stay on this device unless you sign in and turn on those sync categories. The password vault always stays on this device. Read the Privacy Policy and Terms in Settings.")
                     }
                 },
@@ -945,7 +945,7 @@ private fun pictureInPictureParams(context: android.content.Context, state: Brow
                                 ),
                             )
                             .border(1.dp, BreezeTeal.copy(alpha = .48f), CircleShape)
-                            .semantics { contentDescription = "Open Nav" }
+                            .semantics { contentDescription = "Open Aero" }
                             .clickable {
                                 view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
                 if (state.isHomePage) state.startStandaloneNavChat() else openNavFromBrowser(state)

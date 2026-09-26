@@ -206,7 +206,7 @@ fun AccountScreen(state: BrowserState) {
                         DividerLine()
                         SyncToggle("History", "Web pages you visited", account.preferences.history, busy) { changeSync("history", it) }
                         DividerLine()
-                        SyncToggle("Nav chats", "Messages and source links; attached images stay on this device", account.preferences.chats, busy) { changeSync("chats", it) }
+                        SyncToggle("Aero chats", "Messages and source links; attached images stay on this device", account.preferences.chats, busy) { changeSync("chats", it) }
                         DividerLine()
                         SyncToggle("Reminders", "Reminder text and schedule", account.preferences.reminders, busy) { changeSync("reminders", it) }
                     }

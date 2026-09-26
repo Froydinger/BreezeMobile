@@ -35,10 +35,8 @@ enum class NavTask(val slug: String, val needsPrompt: Boolean) {
 }
 
 /**
- * Deterministic routing contract for home Ask/Search and webpage address input.
- * Ordinary text always stays in Nav. Web searches require a search mode, the
- * explicit search control, or an explicit search phrase. URLs are the only
- * unprompted input that opens a page.
+ * Deterministic routing contract for Ask/Search input. Use [routeSpectraOnly]
+ * on surfaces where Nav has a separate action and text must never become a chat.
  */
 object InputRouter {
     /**
@@ -77,6 +75,14 @@ object InputRouter {
         // Address-bar text is still an Ask action unless the user explicitly
         // switches to Search or uses a search modifier/button.
         return InputRoute.StartChat(input)
+    }
+
+    /** Direct Spectra search for surfaces where Nav is available separately. */
+    fun routeSpectraOnly(rawInput: String): InputRoute? {
+        val input = rawInput.trim()
+        if (input.isEmpty()) return null
+        if (looksLikeUrl(input)) return InputRoute.OpenUrl(normalizeUrl(input))
+        return search(input, SearchEngine.SPECTRA)
     }
 
     fun looksLikeUrl(rawInput: String): Boolean {

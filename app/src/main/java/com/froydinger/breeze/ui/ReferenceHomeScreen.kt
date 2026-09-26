@@ -12,6 +12,8 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
@@ -23,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.focus.FocusRequester
@@ -87,7 +90,7 @@ import com.froydinger.breeze.core.HomeInputMode
         if (query.isNotBlank()) {
             input = ""
             focus.clearFocus()
-            state.submit(query)
+            state.submitHomeInput(query)
         }
     }
     BoxWithConstraints(modifier.fillMaxSize().then(screenEntrance())) {
@@ -114,22 +117,24 @@ import com.froydinger.breeze.core.HomeInputMode
                     contentAlignment = Alignment.Center,
                 ) { BreezeLogo(46.dp) }
             }
-            Spacer(Modifier.height(29.dp))
+            Spacer(Modifier.height(16.dp))
+            HomeInputModePicker(state.homeMode, state::updateHomeMode, Modifier.align(Alignment.CenterHorizontally))
+            Spacer(Modifier.height(16.dp))
             Row(Modifier.fillMaxWidth().height(55.dp).graphicsLayer {
                 val progress = tabUiEntrance().coerceIn(0f, 1f)
                 alpha = progress
                 translationY = -(1f - progress) * 20.dp.toPx()
             }.breezeGlass(32.dp).padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically) {
-                IconButton(onClick=photo,modifier=Modifier.size(42.dp)) {
+                IconButton(onClick={state.updateHomeMode(HomeInputMode.ASK); photo()},modifier=Modifier.size(42.dp)) {
                     Icon(BreezeIcons.PhotoCamera,"Attach a photo",Modifier.size(22.dp),tint=MaterialTheme.colorScheme.onSurface.copy(alpha=.78f))
                 }
                 Spacer(Modifier.width(3.dp))
                 BasicTextField(value=input,onValueChange={input=it},modifier=Modifier.weight(1f).focusRequester(inputFocusRequester),singleLine=true,
                     textStyle=MaterialTheme.typography.bodyLarge.copy(color=MaterialTheme.colorScheme.onSurface),cursorBrush=SolidColor(BreezeTeal),
                     keyboardOptions=KeyboardOptions(imeAction=ImeAction.Go),keyboardActions=KeyboardActions(onGo={submitInput()}),
-                    decorationBox={inner -> if(input.isEmpty()) Text(if(state.homeMode==HomeInputMode.SEARCH) "Search the web, or type a URL" else "Ask Breeze, or type a URL",fontSize=15.sp,color=MaterialTheme.colorScheme.onSurface.copy(alpha=.65f),maxLines=1);inner()})
+                    decorationBox={inner -> if(input.isEmpty()) Text(if(state.homeMode==HomeInputMode.SEARCH) "Search Spectra, or type a URL" else "Ask Aero, or type a URL",fontSize=15.sp,color=MaterialTheme.colorScheme.onSurface.copy(alpha=.65f),maxLines=1);inner()})
                 if(input.isNotBlank()) {
-                    IconButton(onClick={submitInput()},modifier=Modifier.size(36.dp)) {Icon(BreezeIcons.ArrowForward,"Ask Breeze or open URL",Modifier.size(21.dp))}
+                    IconButton(onClick={submitInput()},modifier=Modifier.size(36.dp)) {Icon(BreezeIcons.ArrowForward,if(state.homeMode==HomeInputMode.SEARCH) "Search Spectra or open URL" else "Ask Aero or open URL",Modifier.size(21.dp))}
                 }
                 Box(Modifier.padding(horizontal=6.dp).width(.7.dp).height(27.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha=.18f)))
                 VoiceTranscriptionButton(
@@ -142,13 +147,12 @@ import com.froydinger.breeze.core.HomeInputMode
                         val query = if (input.trim().endsWith(spoken)) input.trim() else listOf(input.trim(), spoken).filter(String::isNotBlank).joinToString(" ")
                         input = ""
                         focus.clearFocus()
-                        state.submit(query)
+                        state.submitHomeInput(query)
                     },
                 )
             }
-            Text("Powered by Spectra",fontSize=10.sp,color=MaterialTheme.colorScheme.onSurface.copy(alpha=.45f),modifier=Modifier.align(Alignment.CenterHorizontally).padding(top=8.dp))
             // Leave the scene visible, as in the approved home reference.
-            Spacer(Modifier.height((screenHeight*.012f).coerceIn(8.dp,12.dp)))
+            Spacer(Modifier.height((screenHeight*.012f).coerceIn(12.dp,16.dp)))
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val itemCount = state.pinnedSites.size + 1
                 val contentWidth = (56f * itemCount + 14f * (itemCount - 1)).dp
@@ -255,6 +259,59 @@ import com.froydinger.breeze.core.HomeInputMode
         if(state.pinSite(shortcutName, url)) {addShortcut=false; shortcutName=""; shortcutUrl=""}else state.notice="Enter a valid website URL"
     }) {Text("Add")}},dismissButton={TextButton(onClick={addShortcut=false}) {Text("Cancel")}})
 }
+@Composable
+private fun HomeInputModePicker(
+    mode: HomeInputMode,
+    onSelect: (HomeInputMode) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(18.dp)
+    val outline = MaterialTheme.colorScheme.outline.copy(alpha = .5f)
+    Row(
+        modifier.width(176.dp)
+            .height(30.dp)
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = .76f))
+            .border(1.dp, outline, shape)
+            .padding(2.dp)
+            .selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        HomeInputModeOption(HomeInputMode.SEARCH, mode, BreezeIcons.Search, "Search", Modifier.weight(1f), onSelect)
+        HomeInputModeOption(HomeInputMode.ASK, mode, BreezeIcons.PaperPlane, "Ask", Modifier.weight(1f), onSelect)
+    }
+}
+
+@Composable
+private fun HomeInputModeOption(
+    option: HomeInputMode,
+    selectedMode: HomeInputMode,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    modifier: Modifier,
+    onSelect: (HomeInputMode) -> Unit,
+) {
+    val selected = option == selectedMode
+    val shape = RoundedCornerShape(17.dp)
+    val accent = MaterialTheme.colorScheme.primary
+    Row(
+        modifier.height(24.dp)
+            .clip(shape)
+            .background(if (selected) accent.copy(alpha = .18f) else Color.Transparent)
+            .then(if (selected) Modifier.border(1.dp, accent.copy(alpha = .55f), shape) else Modifier)
+            .selectable(selected = selected, role = Role.RadioButton) { onSelect(option) }
+            .padding(horizontal = 5.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(13.dp), tint = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(4.dp))
+        Text(label, fontSize = 10.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+    }
+}
+
 @Composable private fun PinnedShortcut(site:PinnedSite,index:Int,count:Int,onClick:()->Unit,onMoveLeft:()->Unit,onMoveRight:()->Unit,onDelete:()->Unit) {
     var menu by remember { mutableStateOf(false) }
     var dragging by remember { mutableStateOf(false) }

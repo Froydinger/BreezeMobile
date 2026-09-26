@@ -72,7 +72,7 @@ data class Citation(val title: String, val url: String, val snippet: String? = n
 
 data class BrowserSettings(
     val theme: ThemeMode = ThemeMode.SYSTEM,
-    val homeInputMode: HomeInputMode = HomeInputMode.ASK,
+    val homeInputMode: HomeInputMode = HomeInputMode.SEARCH,
     val searchEngine: SearchEngine = SearchEngine.SPECTRA,
     val showShortcuts: Boolean = true,
     val trackingProtectionEnabled: Boolean = true,
