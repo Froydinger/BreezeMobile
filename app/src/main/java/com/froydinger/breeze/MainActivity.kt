@@ -89,7 +89,6 @@ import android.graphics.Bitmap
 import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
-import com.froydinger.breeze.browser.PwaTwaBridge
 
 private const val ACTION_PIP_PLAYBACK = "com.froydinger.breeze.PIP_PLAYBACK"
 
@@ -188,8 +187,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         }
         when (intent?.action) {
             Intent.ACTION_VIEW -> intent.dataString?.let { url ->
-                val standalone = intent.getBooleanExtra(EXTRA_STANDALONE_PWA, false) ||
-                    PwaTwaBridge.consumeTrustedLaunch(this, intent)
+                val standalone = intent.getBooleanExtra(EXTRA_STANDALONE_PWA, false)
                 val openedNative = !standalone && com.froydinger.breeze.ui.openExternalLinkInApp(this, android.net.Uri.parse(url))
                 if (!openedNative) browser.openExternalUrl(url, standalone)
             }

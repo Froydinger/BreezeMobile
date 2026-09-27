@@ -67,20 +67,8 @@
                 <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
             </intent-filter>
         </receiver>
-        <receiver android:name=".browser.PwaInstallRecordReceiver" android:enabled="true" android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.PACKAGE_FULLY_REMOVED" />
-                <data android:scheme="package" />
-            </intent-filter>
-        </receiver>
         <service android:name=".notifications.BreezeFirebaseMessagingService" android:exported="false">
             <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter>
-        </service>
-        <service android:name=".browser.BreezeCustomTabsService" android:enabled="@bool/breeze_twa_provider_enabled" android:exported="true" android:permission="android.permission.BIND_CUSTOM_TABS_SERVICE">
-            <intent-filter>
-                <action android:name="android.support.customtabs.action.CustomTabsService" />
-                <category android:name="androidx.browser.trusted.category.TrustedWebActivities" />
-            </intent-filter>
         </service>
     </application>
 </manifest>

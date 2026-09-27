@@ -49,8 +49,6 @@ import androidx.compose.ui.unit.sp
 import com.froydinger.breeze.BrowserState
 import com.froydinger.breeze.BuildConfig
 import com.froydinger.breeze.EXTRA_STANDALONE_PWA
-import com.froydinger.breeze.browser.PwaInstallPreflightException
-import com.froydinger.breeze.browser.PwaManifestPreflight
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -65,7 +63,7 @@ fun AddressPageTools(state: BrowserState, modifier: Modifier = Modifier) {
     var expanded by remember { mutableStateOf(false) }
     var confirmClearSite by remember { mutableStateOf(false) }
     var bookmarkRemovalUrl by remember { mutableStateOf<String?>(null) }
-    var pwaInstallUnavailable by remember { mutableStateOf<String?>(null) }
+    var pwaInstallFallback by remember { mutableStateOf<String?>(null) }
     var showHiddenItems by remember { mutableStateOf(false) }
     var privacyExpanded by remember { mutableStateOf(false) }
     var librarySettingsExpanded by remember { mutableStateOf(false) }
@@ -179,9 +177,7 @@ fun AddressPageTools(state: BrowserState, modifier: Modifier = Modifier) {
                 }
                 PageAction(if (isPwaInstallable) "Install app" else "Add to Home screen", BreezeIcons.Add, enabled = canCreateHomeShortcut) {
                     expanded = false
-                    if (pwaManifestUrl != null) shortcutScope.launch {
-                        requestPwaInstall(context, state, pwaManifestUrl) { pwaInstallUnavailable = it }
-                    }
+                    if (pwaManifestUrl != null) requestPwaInstall(context, state, pwaManifestUrl) { pwaInstallFallback = it }
                     else shortcutScope.launch { requestHomeShortcut(context, state) }
                 }
 
@@ -199,12 +195,18 @@ fun AddressPageTools(state: BrowserState, modifier: Modifier = Modifier) {
             dismissButton = { androidx.compose.material3.TextButton(onClick = { bookmarkRemovalUrl = null }) { Text("Cancel") } },
         )
     }
-    pwaInstallUnavailable?.let { reason ->
+    pwaInstallFallback?.let { reason ->
         AlertDialog(
-            onDismissRequest = { pwaInstallUnavailable = null },
-            title = { Text("Couldn’t install this PWA") },
-            text = { Text("$reason\n\nBreeze did not add a shortcut, so it won’t appear as a browser-style saved site.") },
-            confirmButton = { TextButton(onClick = { pwaInstallUnavailable = null }) { Text("Close") } },
+            onDismissRequest = { pwaInstallFallback = null },
+            title = { Text("PWA install unavailable") },
+            text = { Text("$reason\n\nBreeze stayed on this page. You can add a regular home-screen shortcut instead; it won’t be a full installed PWA.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    pwaInstallFallback = null
+                    shortcutScope.launch { requestHomeShortcut(context, state) }
+                }) { Text("Add shortcut") }
+            },
+            dismissButton = { TextButton(onClick = { pwaInstallFallback = null }) { Text("Close") } },
         )
     }
     if (confirmClearSite) {
@@ -331,19 +333,20 @@ private fun PageAction(label: String, icon: androidx.compose.ui.graphics.vector.
     )
 }
 
-private suspend fun requestPwaInstall(
+private fun requestPwaInstall(
     context: android.content.Context,
     state: BrowserState,
     manifestUrl: String,
     onUnavailable: (String) -> Unit,
 ) {
     val page = state.selected ?: return
-    val pageUrl = page.url
-    val pageTitle = page.title
     if (page.private) {
         state.notice = "Private pages can’t be installed as apps."
         return
     }
+    val title = page.webAppManifest?.optString("short_name")?.takeIf { it.isNotBlank() }
+        ?: page.webAppManifest?.optString("name")?.takeIf { it.isNotBlank() }
+        ?: page.title.ifBlank { Uri.parse(page.url).host.orEmpty() }
     if (Build.VERSION.SDK_INT < 37) {
         onUnavailable("Full PWA installation needs Android’s system web-app installer, which is available on Android 17 and newer.")
         return
@@ -361,55 +364,12 @@ private suspend fun requestPwaInstall(
     if (BuildConfig.DEBUG) {
         android.util.Log.d("BreezePWA", "installerAvailable=$available browserRoleHeld=$browserRoleHeld sdk=${Build.VERSION.SDK_INT}")
     }
-    if (!available) {
-        onUnavailable("Android’s system Web App installer is unavailable on this device.")
-        return
-    }
-    state.notice = "Checking the current app manifest and icon…"
-    val metadata = try {
-        withContext(Dispatchers.IO) {
-            PwaManifestPreflight.inspect(manifestUrl, pageUrl, pageTitle)
-        }
-    } catch (error: PwaInstallPreflightException) {
-        if (state.selected?.id == page.id && page.url == pageUrl) {
-            onUnavailable(error.message ?: "The site's app manifest could not be verified.")
-        }
-        return
-    } catch (_: Exception) {
-        if (state.selected?.id == page.id && page.url == pageUrl) {
-            onUnavailable("The site's current app manifest or launcher icon could not be verified.")
-        }
-        return
-    }
-    if (state.selected?.id != page.id || page.url != pageUrl) return
-    if (BuildConfig.DEBUG) {
-        android.util.Log.d("BreezePWA", "preflight passed display=${metadata.displayMode} icon192=true")
-    }
     runCatching {
-        val request = WebAppInstallRequest.Builder(metadata.title, metadata.manifestUrl).build()
-        state.notice = "Installing ${metadata.title} as a standalone app…"
-        manager.install(request, context.mainExecutor) { packageName, result ->
+        val request = WebAppInstallRequest.Builder(title, manifestUrl).build()
+        state.notice = "Requesting Android’s PWA installer…"
+        manager.install(request, context.mainExecutor) { _, result ->
             when (result) {
-                WebAppInstallRequest.RESULT_SUCCESS -> {
-                    if (packageName.isNullOrBlank()) {
-                        onUnavailable("Android did not confirm the installed app package. No shortcut was added.")
-                    } else if (!com.froydinger.breeze.browser.PwaTwaBridge.recordInstalledWebApp(
-                            context,
-                            packageName,
-                            metadata.manifestUrl,
-                            metadata.startUrl,
-                        ) || !com.froydinger.breeze.browser.PwaTwaBridge.isInstalledByThisBrowser(
-                            context,
-                            packageName,
-                            metadata.manifestUrl,
-                            metadata.startUrl,
-                        )
-                    ) {
-                        onUnavailable("Android installed the app, but Breeze couldn’t finish its standalone launch setup. The app may still appear in your app drawer.")
-                    } else {
-                        state.notice = "${metadata.title} was installed as a standalone app. Find it in your app drawer."
-                    }
-                }
+                WebAppInstallRequest.RESULT_SUCCESS -> state.notice = "$title was installed. Find it in your app drawer."
                 WebAppInstallRequest.RESULT_CANCELLED_BY_USER -> state.notice = "PWA installation canceled."
                 WebAppInstallRequest.RESULT_DUPLICATED_REQUEST -> state.notice = "This PWA is already being installed."
                 WebAppInstallRequest.RESULT_PERMISSION_DENIED -> onUnavailable("Android denied the install request. Breeze needs to be eligible for Android’s browser role to install PWAs.")
