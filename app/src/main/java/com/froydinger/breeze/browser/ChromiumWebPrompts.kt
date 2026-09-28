@@ -232,7 +232,13 @@ class ChromiumWebPrompts(
 
     private fun finishFileChooser(uris: Array<Uri>?) {
         val pending = pendingFile.also { pendingFile = null } ?: return
-        val valid = !closed && isCurrent(pending.origin, pending.privateMode)
+        // ActivityResult delivers the picker result at STARTED, before the Activity is RESUMED.
+        // Keep the origin and current-tab check without rejecting that valid return window.
+        val context = if (!closed && activity.lifecycle.currentState >= Lifecycle.State.STARTED) {
+            runCatching(resolveCurrentPage).getOrNull()
+        } else null
+        val valid = context != null && context.privateMode == pending.privateMode &&
+            webOrigin(context.url) == pending.origin
         pending.callback.onReceiveValue(uris?.takeIf { valid })
     }
 
