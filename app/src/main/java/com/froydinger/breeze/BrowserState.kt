@@ -115,6 +115,13 @@ class LiveTab(val id: String = UUID.randomUUID().toString(), val private: Boolea
     var extraction: GeckoResult<String>? = null
 }
 data class SavedPage(val id: String, val title: String, val url: String, val time: Long = System.currentTimeMillis())
+data class ExternalAppLaunchPrompt(
+    val appName: String,
+    val host: String?,
+    val intent: Intent,
+    val fallbackUrl: String?,
+    val fallbackInNewTab: Boolean,
+)
 data class PinnedSite(val id: String = UUID.randomUUID().toString(), val title: String, val url: String)
 data class SavedDownload(val id: String, val name: String, val uri: String, val time: Long = System.currentTimeMillis())
 data class LocalReminder(
@@ -324,6 +331,8 @@ class BrowserState(private val app: Application) {
         private set
 
     var notice by mutableStateOf<String?>(null)
+    var externalAppLaunchPrompt by mutableStateOf<ExternalAppLaunchPrompt?>(null)
+        private set
     var showFind by mutableStateOf(false)
     var ready by mutableStateOf(false)
     var credentials: com.froydinger.breeze.browser.BrowserCredentials? = null
@@ -764,6 +773,27 @@ class BrowserState(private val app: Application) {
             snapshotFlow { ready }.first { it }
             isStandalonePwa = standalonePwa
             navigate(url, new = true)
+        }
+    }
+    fun openExternalWebUrl(url: String, standalonePwa: Boolean = false) {
+        val uri = Uri.parse(url)
+        if (standalonePwa || uri.scheme !in setOf("http", "https") || uri.host.isNullOrBlank()) {
+            openExternalUrl(url, standalonePwa)
+            return
+        }
+        scope.launch {
+            val destination = withContext(Dispatchers.IO) {
+                runCatching { com.froydinger.breeze.ui.nativeAppFor(app, uri) }.getOrNull()
+            }
+            if (destination == null) {
+                openExternalUrl(url)
+                return@launch
+            }
+            val target = Intent(Intent.ACTION_VIEW, uri)
+                .addCategory(Intent.CATEGORY_BROWSABLE)
+                .setComponent(destination.component)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            askBeforeOpeningExternalApp(destination.name, uri.host, target, url, fallbackInNewTab = true)
         }
     }
     fun navigate(url: String, new: Boolean = false, privateMode: Boolean? = null) {
@@ -2469,6 +2499,87 @@ class BrowserState(private val app: Application) {
         } catch (_: Exception) { notice = "This file cannot be opened. It may have moved, or need another app." }
     }
     fun share(): Intent? = selected?.url?.takeIf { it.isNotBlank() }?.let { Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, it), "Share page") }
+    fun resolveExternalAppPrompt(openApp: Boolean) {
+        val prompt = externalAppLaunchPrompt ?: return
+        externalAppLaunchPrompt = null
+        if (openApp) {
+            runCatching { app.startActivity(prompt.intent) }
+                .onFailure { openPromptFallback(prompt) }
+        } else {
+            openPromptFallback(prompt)
+        }
+    }
+    private fun openPromptFallback(prompt: ExternalAppLaunchPrompt) {
+        val fallback = prompt.fallbackUrl ?: return
+        if (prompt.fallbackInNewTab) openExternalUrl(fallback) else navigate(fallback)
+    }
+    private fun askBeforeOpeningExternalApp(
+        appName: String,
+        host: String?,
+        intent: Intent,
+        fallbackUrl: String?,
+        fallbackInNewTab: Boolean,
+    ) {
+        if (externalAppLaunchPrompt != null) return
+        externalAppLaunchPrompt = ExternalAppLaunchPrompt(
+            appName = appName,
+            host = host?.removePrefix("www."),
+            intent = intent,
+            fallbackUrl = fallbackUrl,
+            fallbackInNewTab = fallbackInNewTab,
+        )
+    }
+    private fun findExternalAppDestination(intent: Intent): com.froydinger.breeze.ui.NativeAppDestination? {
+        val manager = app.packageManager
+        val flags = android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
+        fun webIntent(uri: Uri) = Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)
+        val browsers = runCatching {
+            manager.queryIntentActivities(webIntent(Uri.parse("https://example.com/")), flags)
+                .map { it.activityInfo.packageName }.toSet()
+        }.getOrDefault(emptySet())
+        val packageName = intent.`package`
+        val queryIntent = Intent(intent)
+        queryIntent.data?.takeIf {
+            it.scheme in setOf("http", "https") && it.path.isNullOrEmpty()
+        }?.let { queryIntent.data = it.buildUpon().encodedPath("/").build() }
+        val resolved = runCatching {
+            manager.queryIntentActivities(queryIntent, flags).asSequence()
+                .filter { it.activityInfo.exported && it.activityInfo.enabled }
+                .filter { it.activityInfo.packageName != app.packageName && it.activityInfo.packageName !in browsers }
+                .filter { packageName == null || it.activityInfo.packageName == packageName }
+                .sortedByDescending { it.priority }
+                .firstOrNull()
+        }.getOrNull() ?: return null
+        return com.froydinger.breeze.ui.NativeAppDestination(
+            name = runCatching { resolved.loadLabel(manager).toString() }.getOrDefault("another app"),
+            component = android.content.ComponentName(resolved.activityInfo.packageName, resolved.activityInfo.name),
+        )
+    }
+    private fun promptForExternalApp(
+        intent: Intent,
+        host: String?,
+        fallbackUrl: String?,
+        fallbackInNewTab: Boolean,
+    ) {
+        scope.launch {
+            val destination = withContext(Dispatchers.IO) {
+                runCatching { findExternalAppDestination(intent) }.getOrNull()
+            }
+            if (destination == null) {
+                if (fallbackUrl != null) {
+                    if (fallbackInNewTab) openExternalUrl(fallbackUrl) else navigate(fallbackUrl)
+                } else {
+                    val packageLabel = intent.`package`?.let { packageName ->
+                        runCatching { app.packageManager.getApplicationInfo(packageName, 0).loadLabel(app.packageManager).toString() }.getOrNull()
+                    }
+                    askBeforeOpeningExternalApp(packageLabel ?: "another app", host, intent, null, fallbackInNewTab)
+                }
+                return@launch
+            }
+            intent.component = destination.component
+            askBeforeOpeningExternalApp(destination.name, host, intent, fallbackUrl, fallbackInNewTab)
+        }
+    }
     fun launchExternalUri(uriText: String) {
         val uri = Uri.parse(uriText)
         if (uri.scheme.equals("intent", ignoreCase = true)) {
@@ -2484,8 +2595,8 @@ class BrowserState(private val app: Application) {
             if (parsed.data?.scheme?.lowercase() in setOf("javascript", "data", "file", "content", "about", "blob")) return
             parsed.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REQUIRE_NON_BROWSER
             parsed.addCategory(Intent.CATEGORY_BROWSABLE)
-            if (runCatching { app.startActivity(parsed) }.isSuccess) return
-            if (fallback != null) navigate(fallback.toString()) else notice = "No installed app can open this link."
+            val siteHost = fallback?.host ?: parsed.data?.host
+            promptForExternalApp(parsed, siteHost, fallback?.toString(), fallbackInNewTab = false)
             return
         }
         val action = when (uri.scheme?.lowercase()) {
@@ -2497,6 +2608,11 @@ class BrowserState(private val app: Application) {
         }
         val intent = Intent(action, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             .addCategory(Intent.CATEGORY_BROWSABLE)
+        if (uri.scheme?.lowercase() !in setOf("mailto", "sms", "tel", "geo", "market")) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_REQUIRE_NON_BROWSER)
+            promptForExternalApp(intent, uri.host, null, fallbackInNewTab = false)
+            return
+        }
         runCatching { app.startActivity(intent) }.onFailure { notice = "No installed app can open this link." }
     }
     fun persist() {

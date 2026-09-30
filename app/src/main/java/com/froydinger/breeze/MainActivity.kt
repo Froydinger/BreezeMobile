@@ -188,8 +188,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         when (intent?.action) {
             Intent.ACTION_VIEW -> intent.dataString?.let { url ->
                 val standalone = intent.getBooleanExtra(EXTRA_STANDALONE_PWA, false)
-                val openedNative = !standalone && com.froydinger.breeze.ui.openExternalLinkInApp(this, android.net.Uri.parse(url))
-                if (!openedNative) browser.openExternalUrl(url, standalone)
+                browser.openExternalWebUrl(url, standalone)
             }
             Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)?.let(browser::openSharedText)
         }
@@ -750,6 +749,32 @@ private fun pictureInPictureParams(context: android.content.Context, state: Brow
                 confirmButton = { TextButton(onClick = state::acceptCloudDisclosure) { Text("Agree and continue") } },
                 dismissButton = { TextButton(onClick = state::declineCloudDisclosure) { Text("Not now") } },
             )
+            state.externalAppLaunchPrompt?.let { prompt ->
+                AlertDialog(
+                    onDismissRequest = { state.resolveExternalAppPrompt(openApp = false) },
+                    title = { Text("Open in ${prompt.appName}?") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("This link wants to leave Breeze and open ${prompt.appName}.")
+                            Text(
+                                prompt.host?.let { "Stay here to keep browsing $it in Breeze." }
+                                    ?: "Stay here to keep browsing in Breeze.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { state.resolveExternalAppPrompt(openApp = true) }) {
+                            Text("Open once")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { state.resolveExternalAppPrompt(openApp = false) }) {
+                            Text("Stay in Breeze")
+                        }
+                    },
+                )
+            }
             if (state.ready && showOnboarding && !state.isPictureInPicture) FirstRunOnboarding {
                 onboardingPreferences.edit().putBoolean("complete", true).apply()
                 showOnboarding = false

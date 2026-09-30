@@ -17,14 +17,21 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private data class NativeAppDestination(val name: String, val component: ComponentName)
+internal data class NativeAppDestination(val name: String, val component: ComponentName)
 
 /** Offer only installed handlers for this exact web URL, excluding general-purpose browsers. */
 @Suppress("DEPRECATION")
-private fun nativeAppFor(context: Context, uri: Uri): NativeAppDestination? {
+internal fun nativeAppFor(context: Context, uri: Uri): NativeAppDestination? {
     val manager = context.packageManager
     val flags = PackageManager.MATCH_DEFAULT_ONLY
-    fun link(target: Uri) = Intent(Intent.ACTION_VIEW, target).addCategory(Intent.CATEGORY_BROWSABLE)
+    fun link(target: Uri): Intent {
+        // Android intent matching distinguishes an empty path from the site's root path.
+        // Normalize bare origins so `https://chatgpt.com` matches the same app link as `/`.
+        val normalized = if (target.scheme in setOf("http", "https") && target.path.isNullOrEmpty()) {
+            target.buildUpon().encodedPath("/").build()
+        } else target
+        return Intent(Intent.ACTION_VIEW, normalized).addCategory(Intent.CATEGORY_BROWSABLE)
+    }
     val browsers = manager.queryIntentActivities(link(Uri.parse("https://example.com/")), flags)
         .map { it.activityInfo.packageName }.toSet()
     return manager.queryIntentActivities(link(uri), flags).asSequence()
@@ -32,14 +39,6 @@ private fun nativeAppFor(context: Context, uri: Uri): NativeAppDestination? {
         .filter { it.activityInfo.packageName != context.packageName && it.activityInfo.packageName !in browsers }
         .sortedByDescending { it.priority }
         .firstOrNull()?.let { NativeAppDestination(it.loadLabel(manager).toString(), ComponentName(it.activityInfo.packageName, it.activityInfo.name)) }
-}
-
-/** External web links that reach Breeze may continue to a matching installed app. */
-fun openExternalLinkInApp(context: Context, uri: Uri): Boolean {
-    if (uri.scheme !in setOf("http", "https") || uri.host.isNullOrBlank()) return false
-    val intent = Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)
-        .addFlags(Intent.FLAG_ACTIVITY_REQUIRE_NON_BROWSER)
-    return runCatching { context.startActivity(intent); true }.getOrDefault(false)
 }
 
 @Composable
