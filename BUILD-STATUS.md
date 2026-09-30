@@ -1,5 +1,13 @@
 # Android development status
 
+## September 30 app link choice release 0.1.28
+
+- Published signed ARM64 beta [Breeze-Android-0.1.28-beta.1-arm64.apk](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.28-beta.1/Breeze-Android-0.1.28-beta.1-arm64.apk), versionCode 29. SHA-256: `49c9b15d37fc4426bae905cdd72503639061d99c9f8c043d0c115977a46bdaf0`. APK v3 signing passed with the existing release signer, and 16 KB native-library alignment passed.
+- Adds a confirmation before an HTTP(S) link opens a matching installed app, with options to stay in Breeze or open the app once. Pixel 11 verified the “Open once” path. “Stay in Breeze” was not rechecked on-device in this release pass.
+- `:app:assembleRelease` and release lint vital passed. Version code/name: 29 / 0.1.28. App-link chooser source commit: `5ac2006`; release version commit: `3f24877`; tag: `android-v0.1.28-beta.1`.
+- The public update manifest now returns versionCode 29 / 0.1.28 at source commit `36e1cb4`. GitHub reports the APK asset uploaded with the expected SHA-256 and HTTP 200.
+- Android links and version labels on the lander were updated in site commit `e4e5ebc`; Netlify production deploy `6abd2a989b8ba9434776ef52` went to the verified `breezebrowser` site. The live `/mobile/` page shows version 0.1.28 and links to the signed APK. The user's other uncommitted website edits were left untouched.
+
 ## September 26 Android photo attachment release 0.1.24
 
 - Published signed ARM64 beta [Breeze-Android-0.1.24-beta.1-arm64.apk](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.24-beta.1/Breeze-Android-0.1.24-beta.1-arm64.apk), versionCode 25. SHA-256: `0da6d4a094089dc1a064a1fa0384f8e50899bfe07fb809a60e398ee4635b6a0a`. APK v3 signing and 16 KB native-library alignment passed; signer certificate matches the existing production identity.
