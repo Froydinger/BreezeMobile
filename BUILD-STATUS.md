@@ -1,5 +1,13 @@
 # Android development status
 
+## September 30 ChatGPT Google sign-in crash candidate 0.1.29
+
+- Published signed ARM64 beta [Breeze-Android-0.1.29-beta.1-arm64.apk](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.29-beta.1/Breeze-Android-0.1.29-beta.1-arm64.apk), versionCode 30. SHA-256: `3633e376d3f51ece582552f3fb0d13a93ce68b86ca20549b47e218986b588399`. APK v3 signature, production signer fingerprint, package/version, and 16 KB native-library alignment were checked.
+- Adds Chromium popup-tab lifecycle handling so a sign-in popup can close back to its opener, plus recovery when Android terminates a Chromium renderer. Inactive renderer state is held in memory and restored when possible.
+- `:app:testDebugUnitTest` and `:app:assembleRelease` passed. Source commit: `9447df2`; release tag: `android-v0.1.29-beta.1`. The app update manifest is advanced to versionCode 30 / 0.1.29 in this release.
+- ChatGPT Google sign-in has not been retested on a phone in this release pass. The user will update and verify the live sign-in flow. Breeze Dev was not built or installed, and the Pixel was not touched.
+- No Breeze Cloud Worker files changed.
+
 ## September 30 app link choice release 0.1.28
 
 - Published signed ARM64 beta [Breeze-Android-0.1.28-beta.1-arm64.apk](https://github.com/Froydinger/BreezeMobile/releases/download/android-v0.1.28-beta.1/Breeze-Android-0.1.28-beta.1-arm64.apk), versionCode 29. SHA-256: `49c9b15d37fc4426bae905cdd72503639061d99c9f8c043d0c115977a46bdaf0`. APK v3 signing passed with the existing release signer, and 16 KB native-library alignment passed.
