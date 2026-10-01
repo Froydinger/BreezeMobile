@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
@@ -44,6 +45,7 @@ private const val MAX_HIDDEN_SELECTOR_LENGTH = 512
 private const val MAX_HIDDEN_ELEMENTS_PER_SITE = 30
 private const val SESSION_STATE_MAX_CHARS = 1_500_000
 private const val BACKGROUND_SESSION_RETENTION_MS = 20 * 60 * 1000L
+private const val MAX_CHROMIUM_STATE_BYTES = 64 * 1024
 private const val PRIVATE_WEB_PROFILE = "breeze-private"
 private fun safeWebAppManifestUrl(raw: String): String? = runCatching {
     val uri = Uri.parse(raw)
@@ -77,6 +79,14 @@ class LiveTab(val id: String = UUID.randomUUID().toString(), val private: Boolea
     var session: GeckoSession? = null
     /** Live Chromium view retained while this tab is in the background. */
     var chromiumView: WebView? = null
+    /** In-memory-only navigation stack captured before freeing an inactive WebView renderer. */
+    var chromiumSavedState: Bundle? = null
+    /** Incremented when Chromium kills this WebView's renderer so Compose replaces the dead view. */
+    var chromiumRendererGeneration by mutableIntStateOf(0)
+    /** Do not immediately reload a page whose renderer just crashed; wait for an explicit retry. */
+    var chromiumRendererNeedsReload by mutableStateOf(false)
+    /** Parent tab for a temporary window.open() tab; used to return after OAuth popups close. */
+    var chromiumPopupOpenerId: String? = null
     var chromiumMedia: com.froydinger.breeze.browser.ChromiumMedia? = null
     var chromiumMediaPlaying: Boolean = false
     var chromiumPrivateProfileIsolated: Boolean = false
@@ -647,17 +657,22 @@ class BrowserState(private val app: Application) {
             (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL &&
                 level < android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN)
         tabs.filterNot(::shouldKeepActive).forEach { tab ->
-            val session = tab.session ?: return@forEach
-            session.setActive(false)
-            session.setPriorityHint(GeckoSession.PRIORITY_DEFAULT)
-            session.flushSessionState()
-            if (severe) releaseSession(tab)
+            tab.session?.let { session ->
+                session.setActive(false)
+                session.setPriorityHint(GeckoSession.PRIORITY_DEFAULT)
+                session.flushSessionState()
+                if (severe) releaseSession(tab)
+            }
+            if (severe) releaseChromiumView(tab)
         }
         if (severe) persist()
     }
 
     private fun releaseInactiveSessions() {
-        tabs.filterNot(::shouldKeepActive).forEach(::releaseSession)
+        tabs.filterNot(::shouldKeepActive).forEach { tab ->
+            releaseSession(tab)
+            releaseChromiumView(tab)
+        }
         persist()
     }
 
@@ -808,8 +823,10 @@ class BrowserState(private val app: Application) {
         tab.lastAccessedAt = System.currentTimeMillis()
         tab.savedSessionState = null
         tab.restoredSessionState = false
+        tab.chromiumSavedState = null
         tab.url = targetUrl; tab.error = null; tab.scrollY = 0; tab.chromeCollapsed = false; screen = "browser"
         tab.chromiumLoadIssuedUrl = ""
+        tab.chromiumRendererNeedsReload = false
         loadTab(tab, targetUrl)
         persist()
     }
@@ -865,27 +882,43 @@ class BrowserState(private val app: Application) {
      * tabs, URLs, scroll offsets, and history remain in BrowserState and reattach lazily.
      */
     fun releaseChromiumViewsForActivityDestroy() {
-        tabs.forEach { tab ->
-            val view = tab.chromiumView ?: return@forEach
-            tab.chromiumMedia?.close()
-            tab.chromiumMedia = null
-            tab.url = view.url?.takeIf { it.startsWith("http://") || it.startsWith("https://") } ?: tab.url
-            tab.scrollY = view.scrollY.coerceAtLeast(0)
-            tab.canBack = view.canGoBack()
-            tab.canForward = view.canGoForward()
-            tab.chromiumView = null
-            tab.chromiumLoadIssuedUrl = ""
-            tab.chromiumRestoreScrollAfterLoad = tab.scrollY > 0
-            runCatching {
-                view.stopLoading()
-                view.removeAllViews()
-                view.destroy()
-            }
-        }
+        tabs.forEach(::releaseChromiumView)
+    }
+
+    /** Free an inactive WebView under memory pressure while retaining its navigation stack in RAM. */
+    private fun releaseChromiumView(tab: LiveTab) {
+        val view = tab.chromiumView ?: return
+        val latestUrl = runCatching { view.url }.getOrNull()
+        val savedState = Bundle()
+        tab.chromiumSavedState = runCatching {
+            if (!WebViewFeature.isFeatureSupported(WebViewFeature.SAVE_STATE)) return@runCatching null
+            androidx.webkit.WebViewCompat.saveState(view, savedState, MAX_CHROMIUM_STATE_BYTES, true)
+            savedState.takeUnless { it.isEmpty }
+        }.getOrNull()
+        latestUrl?.takeIf(::isHttpPage)?.let { tab.url = it }
+        tab.scrollY = runCatching { view.scrollY.coerceAtLeast(0) }.getOrDefault(tab.scrollY)
+        tab.canBack = runCatching { view.canGoBack() }.getOrDefault(false)
+        tab.canForward = runCatching { view.canGoForward() }.getOrDefault(false)
+        tab.chromiumView = null
+        tab.chromiumLoadIssuedUrl = if (tab.chromiumSavedState != null) tab.url else ""
+        tab.chromiumRendererNeedsReload = false
+        tab.chromiumRestoreScrollAfterLoad = tab.scrollY > 0
+        tab.chromiumRendererGeneration++
+        tab.chromiumMedia?.close()
+        tab.chromiumMedia = null
+        tab.chromiumMediaPlaying = false
+        tab.videoPlaying = false
+        tab.capture = null
+        tab.captureOverlay = null
+        runCatching { (view.parent as? android.view.ViewGroup)?.removeView(view) }
+        runCatching { view.stopLoading() }
+        runCatching { view.removeAllViews() }
+        runCatching { view.destroy() }
     }
 
     fun chromiumPageStarted(tab: LiveTab, view: WebView, url: String) {
         if (!isCurrentChromiumView(tab, view)) return
+        tab.chromiumRendererNeedsReload = false
         tab.chromiumPageLoadFailed = false
         if (tab.url != url) {
             tab.webAppManifest = null
@@ -969,6 +1002,54 @@ class BrowserState(private val app: Application) {
     private fun isCurrentChromiumView(tab: LiveTab, view: WebView): Boolean =
         tabs.any { it === tab } && tab.chromiumView === view
 
+    /** Recover the browser process if Android terminates Chromium's isolated page renderer. */
+    fun chromiumRendererGone(tab: LiveTab, view: WebView, didCrash: Boolean) {
+        val isCurrent = isCurrentChromiumView(tab, view)
+        if (!isCurrent) {
+            disposeTerminatedWebView(view)
+            return
+        }
+
+        // Keep the last URL and scroll value already recorded by page/scroll callbacks. Android
+        // says the terminated WebView itself must not be used again, even for recovery queries.
+        tab.canBack = false
+        tab.canForward = false
+        tab.loading = false
+        tab.error = if (didCrash) {
+            "This page stopped unexpectedly. Tap Reload to try again."
+        } else {
+            "Android stopped this page to free memory. Tap Reload to reopen it."
+        }
+        tab.chromiumPageLoadFailed = true
+        tab.chromiumRendererNeedsReload = true
+        tab.chromiumLoadIssuedUrl = tab.url
+        tab.chromiumRendererGeneration++
+        tab.chromiumSavedState = null
+        tab.chromiumMedia?.close()
+        tab.chromiumMedia = null
+        tab.chromiumMediaPlaying = false
+        tab.videoPlaying = false
+        tab.videoWidth = 0
+        tab.videoHeight = 0
+        tab.videoFrameUrl = ""
+        tab.capture = null
+        tab.captureOverlay = null
+        tab.chromiumView = null
+        tab.chromiumRestoreScrollAfterLoad = tab.scrollY > 0
+
+        // A terminated renderer's WebView cannot be reused. Compose will replace it using the
+        // incremented generation; release the dead surface and its Activity references now.
+        Log.e("BreezeRenderer", "WebView renderer exited; crashed=${didCrash}, tab=${tab.id.take(8)}")
+        disposeTerminatedWebView(view)
+        persist()
+    }
+
+    private fun disposeTerminatedWebView(view: WebView) {
+        runCatching { (view.parent as? android.view.ViewGroup)?.removeView(view) }
+        runCatching { view.removeAllViews() }
+        runCatching { view.destroy() }
+    }
+
     private fun syncChromiumNavigation(tab: LiveTab) {
         tab.chromiumView?.let { view ->
             tab.canBack = view.canGoBack()
@@ -989,6 +1070,12 @@ class BrowserState(private val app: Application) {
         val view = tab.chromiumView ?: return
         tab.error = null
         tab.loading = true
+        if (tab.chromiumRendererNeedsReload) {
+            tab.chromiumRendererNeedsReload = false
+            tab.chromiumLoadIssuedUrl = ""
+            loadTab(tab, tab.url)
+            return
+        }
         view.reload()
     }
 

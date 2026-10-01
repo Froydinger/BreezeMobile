@@ -275,18 +275,37 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 if (request.isForMainFrame) state.chromiumMainFrameError(tab, view, error.description?.toString().orEmpty())
             }
+
+            override fun onRenderProcessGone(
+                view: WebView,
+                detail: android.webkit.RenderProcessGoneDetail,
+            ): Boolean {
+                state.chromiumRendererGone(tab, view, detail.didCrash())
+                return true
+            }
         }
         webView.webChromeClient = object : WebChromeClient() {
             override fun onReceivedTitle(view: WebView, title: String?) = state.chromiumTitleChanged(tab, view, title)
             override fun onProgressChanged(view: WebView, newProgress: Int) = state.chromiumProgressChanged(tab, view, newProgress)
             override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message): Boolean {
                 if (!isUserGesture || state.screen != "browser" || state.selectedId != tab.id) return false
-                val newTab = state.newTab(private = tab.private, focusHomeInput = false)
-                val child = createChromiumWebView(view.context, state, newTab)
                 val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
+                val newTab = state.newTab(private = tab.private, focusHomeInput = false)
+                newTab.chromiumPopupOpenerId = tab.id
+                val child = createChromiumWebView(view.context, state, newTab)
                 transport.webView = child
                 resultMsg.sendToTarget()
                 return true
+            }
+
+            override fun onCloseWindow(window: WebView) {
+                val popupTab = state.tabs.firstOrNull { it.chromiumView === window } ?: return
+                val openerId = popupTab.chromiumPopupOpenerId ?: return
+                popupTab.chromiumPopupOpenerId = null
+                val wasSelected = state.selectedId == popupTab.id
+                val opener = state.tabs.firstOrNull { it.id == openerId }
+                state.close(popupTab)
+                if (wasSelected && opener != null && state.tabs.any { it === opener }) state.select(opener)
             }
 
             override fun onPermissionRequest(request: PermissionRequest) {
@@ -324,6 +343,21 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             }
         }
         state.attachChromiumView(tab, webView)
+        tab.chromiumSavedState?.let { savedState ->
+            val restored = runCatching { webView.restoreState(savedState) }.getOrNull()
+            tab.chromiumSavedState = null
+            if (restored != null) {
+                restored.currentItem?.url?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+                    ?.let { tab.url = it }
+                tab.canBack = restored.currentIndex > 0
+                tab.canForward = restored.currentIndex < restored.size - 1
+                tab.chromiumLoadIssuedUrl = tab.url
+                tab.chromiumRendererNeedsReload = false
+                tab.chromiumRestoreScrollAfterLoad = tab.scrollY > 0
+            } else {
+                tab.chromiumLoadIssuedUrl = ""
+            }
+        }
         return webView
     }
 
@@ -1379,7 +1413,7 @@ private data class AddressSuggestion(val title: String, val url: String)
           modifier = pageSurfaceModifier.then(if (snapshotMorph) Modifier.graphicsLayer { alpha = 0f } else Modifier),
         ) {
               Box(Modifier.fillMaxSize()) {
-                key(tab.id) { AndroidView(
+                key(tab.id, tab.chromiumRendererGeneration) { AndroidView(
                 factory = { context ->
                     (tab.chromiumView ?: activity?.createChromiumWebView(context, state, tab) ?: WebView(context)).also { view ->
                         (view.parent as? android.view.ViewGroup)?.removeView(view)
@@ -1390,7 +1424,7 @@ private data class AddressSuggestion(val title: String, val url: String)
                 update = { view ->
                     view.setBackgroundColor(if (darkChrome) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
                     installTab(view, tab)
-                    if (tab.url.isNotBlank() && tab.chromiumLoadIssuedUrl != tab.url) state.loadTab(tab, tab.url)
+                    if (tab.url.isNotBlank() && !tab.chromiumRendererNeedsReload && tab.chromiumLoadIssuedUrl != tab.url) state.loadTab(tab, tab.url)
                     if (!state.isPictureInPicture && !state.preparingPictureInPicture) {
                         val visible = android.graphics.Rect()
                         if (view.getGlobalVisibleRect(visible)) {
