@@ -4,6 +4,9 @@
 - Breeze Dev installed on Pixel; user confirmed ChatGPT Google sign-in completed successfully. No new fatal exception appeared in the sampled crash buffer.
 - Apply the bottom shelf inset to the actual WebView viewport, including the animated collapsed height. Google page footer visually verified above the dock.
 - Dismiss successful native app banners, exclude the sibling Breeze package, and suppress immediate link handoff loops. Defer OAuth popup destruction outside the close callback.
+- Published GitHub release `android-v0.1.30-beta.1` and update manifest (commit `70eecca`). Pixel main Breeze downloaded from that prompt, opened the downloaded APK, and installed with Android's Update confirmation. Device now reports versionCode 31 / 0.1.30 and the credential permission granted.
+- Main Breeze Google sign-in returned to OpenAI's own passkey identity challenge without crashing. User must complete their passkey check to verify the final signed-in page.
+- Android lander version/link verified live at `breeze.froydinger.design/mobile/`; website commit `8b54034`, Netlify deploy `6abf10099cc359bfb6987332`.
 - Debug unit tests, release build, and release lint passed. Signed APK uses the existing production certificate. SHA-256: `625c3aa935a0b6e3ed56169f78b4e412b097d7a4fba288d4100fde49c655410b`.
 
 # Android development status
