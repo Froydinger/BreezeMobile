@@ -1,3 +1,11 @@
+## 2026-10-01 — 0.1.30 auth and viewport fix
+
+- Pixel crash log identified missing `CREDENTIAL_MANAGER_SET_ORIGIN` while browser WebAuthn was enabled. Declare the permission and check its grant before enabling browser support; otherwise disable that integration safely.
+- Breeze Dev installed on Pixel; user confirmed ChatGPT Google sign-in completed successfully. No new fatal exception appeared in the sampled crash buffer.
+- Apply the bottom shelf inset to the actual WebView viewport, including the animated collapsed height. Google page footer visually verified above the dock.
+- Dismiss successful native app banners, exclude the sibling Breeze package, and suppress immediate link handoff loops. Defer OAuth popup destruction outside the close callback.
+- Debug unit tests, release build, and release lint passed. Signed APK uses the existing production certificate. SHA-256: `625c3aa935a0b6e3ed56169f78b4e412b097d7a4fba288d4100fde49c655410b`.
+
 # Android development status
 
 ## September 30 ChatGPT Google sign-in crash candidate 0.1.29

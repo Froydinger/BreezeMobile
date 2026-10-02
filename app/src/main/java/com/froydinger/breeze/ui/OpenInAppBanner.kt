@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -24,6 +25,8 @@ internal data class NativeAppDestination(val name: String, val component: Compon
 internal fun nativeAppFor(context: Context, uri: Uri): NativeAppDestination? {
     val manager = context.packageManager
     val flags = PackageManager.MATCH_DEFAULT_ONLY
+    val mainPackage = context.packageName.removeSuffix(".dev")
+    val breezePackages = setOf(mainPackage, "$mainPackage.dev")
     fun link(target: Uri): Intent {
         // Android intent matching distinguishes an empty path from the site's root path.
         // Normalize bare origins so `https://chatgpt.com` matches the same app link as `/`.
@@ -36,24 +39,32 @@ internal fun nativeAppFor(context: Context, uri: Uri): NativeAppDestination? {
         .map { it.activityInfo.packageName }.toSet()
     return manager.queryIntentActivities(link(uri), flags).asSequence()
         .filter { it.activityInfo.exported && it.activityInfo.enabled }
-        .filter { it.activityInfo.packageName != context.packageName && it.activityInfo.packageName !in browsers }
+        .filter { it.activityInfo.packageName !in breezePackages && it.activityInfo.packageName !in browsers }
         .sortedByDescending { it.priority }
         .firstOrNull()?.let { NativeAppDestination(it.loadLabel(manager).toString(), ComponentName(it.activityInfo.packageName, it.activityInfo.name)) }
 }
 
 @Composable
-fun OpenInAppBanner(url: String, modifier: Modifier = Modifier) {
+fun OpenInAppBanner(
+    url: String,
+    modifier: Modifier = Modifier,
+    suppress: Boolean = false,
+    onOpeningApp: (String) -> Unit = {},
+    onOpenFailed: (String) -> Unit = {},
+    onNotice: (String) -> Unit = {},
+) {
     val context = LocalContext.current
     val uri = remember(url) { runCatching { Uri.parse(url) }.getOrNull() }
     val host = uri?.host?.lowercase() ?: return
     if (uri.scheme !in listOf("https", "http")) return
-    val dismissedHosts = remember { mutableStateListOf<String>() }
+    if (suppress) return
+    var dismissed by rememberSaveable(host) { mutableStateOf(false) }
     var destination by remember(url) { mutableStateOf<NativeAppDestination?>(null) }
     LaunchedEffect(url) {
         destination = withContext(Dispatchers.IO) { runCatching { nativeAppFor(context, uri) }.getOrNull() }
     }
     val app = destination ?: return
-    if (host in dismissedHosts) return
+    if (dismissed) return
     Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), tonalElevation = 4.dp, shadowElevation = 3.dp) {
         Row(Modifier.padding(start = 14.dp, top = 4.dp, bottom = 4.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -62,9 +73,16 @@ fun OpenInAppBanner(url: String, modifier: Modifier = Modifier) {
             }
             TextButton(onClick = {
                 val intent = Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE).setComponent(app.component)
-                runCatching { context.startActivity(intent) }.onFailure { dismissedHosts.add(host) }
+                dismissed = true
+                onOpeningApp(url)
+                runCatching { context.startActivity(intent) }
+                    .onFailure {
+                        dismissed = false
+                        onOpenFailed(url)
+                        onNotice("Couldn’t open ${app.name}. You can keep browsing this page in Breeze.")
+                    }
             }) { Text("Open") }
-            IconButton(onClick = { dismissedHosts.add(host) }) { Icon(BreezeIcons.Close, contentDescription = "Dismiss open in app") }
+            IconButton(onClick = { dismissed = true }) { Icon(BreezeIcons.Close, contentDescription = "Dismiss open in app") }
         }
     }
 }

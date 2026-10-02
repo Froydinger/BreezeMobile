@@ -235,7 +235,9 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             runCatching {
                 androidx.webkit.WebSettingsCompat.setWebAuthenticationSupport(
                     webView.settings,
-                    androidx.webkit.WebSettingsCompat.WEB_AUTHENTICATION_SUPPORT_FOR_BROWSER,
+                    if (context.checkSelfPermission("android.permission.CREDENTIAL_MANAGER_SET_ORIGIN") == android.content.pm.PackageManager.PERMISSION_GRANTED)
+                        androidx.webkit.WebSettingsCompat.WEB_AUTHENTICATION_SUPPORT_FOR_BROWSER
+                    else androidx.webkit.WebSettingsCompat.WEB_AUTHENTICATION_SUPPORT_NONE,
                 )
             }
         }
@@ -304,7 +306,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 popupTab.chromiumPopupOpenerId = null
                 val wasSelected = state.selectedId == popupTab.id
                 val opener = state.tabs.firstOrNull { it.id == openerId }
-                state.close(popupTab)
+                state.closePopupWindow(popupTab)
                 if (wasSelected && opener != null && state.tabs.any { it === opener }) state.select(opener)
             }
 
@@ -1265,10 +1267,6 @@ private data class AddressSuggestion(val title: String, val url: String)
     val navInset = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() }
     val expandedShelfBody = BottomBarHeight + BottomBarVerticalPadding * 2
     val collapsedShelfBody = CollapsedBottomBarHeight + CompactBottomBarVerticalPadding * 2
-    val shelfBody = if (pageChromeCollapsed) collapsedShelfBody else expandedShelfBody
-    val viewportBottom = if (keyboardVisible || state.isPictureInPicture || state.isStandalonePwa || state.screen == "tabs" && !preserveSurfaceViewport) 0.dp
-        else (navInset + shelfBody - 5.dp).coerceAtLeast(0.dp)
-    val viewportBottomPx = (viewportBottom.value * density.density).toInt().coerceAtLeast(0)
     val chromeHeight = if (state.isPictureInPicture || state.isStandalonePwa || pageChromeCollapsed) 0.dp else 58.dp
     var screenBounds by remember { mutableStateOf<Rect?>(null) }
     var viewportBounds by remember(tab.id) { mutableStateOf<Rect?>(null) }
@@ -1352,7 +1350,10 @@ private data class AddressSuggestion(val title: String, val url: String)
             }
         }
         }
-        Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().onGloballyPositioned { coordinates ->
+        val shelfProgress = collapseProgress.value.coerceIn(0f, 1f)
+        val pageBottomInset = if (keyboardVisible || state.isPictureInPicture || state.isStandalonePwa) 0.dp
+            else navInset + expandedShelfBody * (1f - shelfProgress) + collapsedShelfBody * shelfProgress
+        Box(Modifier.weight(1f).fillMaxWidth().padding(bottom = pageBottomInset).clipToBounds().onGloballyPositioned { coordinates ->
             val bounds = coordinates.boundsInRoot()
             viewportBounds = bounds
             onPageViewportBoundsChanged(bounds)
@@ -1511,7 +1512,14 @@ private data class AddressSuggestion(val title: String, val url: String)
 
       if (!state.isPictureInPicture) CollapsedUrlChip(state, collapseProgress, pageChromeCollapsed, Modifier.align(Alignment.TopCenter).offset(y = 8.dp).zIndex(2f))
       if (!state.isPictureInPicture && !state.preparingPictureInPicture && state.screen == "browser") {
-          OpenInAppBanner(tab.url, Modifier.align(Alignment.TopCenter).padding(top = if (pageChromeCollapsed) 52.dp else 66.dp, start = 12.dp, end = 12.dp).zIndex(4f))
+          OpenInAppBanner(
+              tab.url,
+              Modifier.align(Alignment.TopCenter).padding(top = if (pageChromeCollapsed) 52.dp else 66.dp, start = 12.dp, end = 12.dp).zIndex(4f),
+              suppress = state.shouldSuppressOpenInAppBanner(tab.url),
+              onOpeningApp = state::noteExternalAppHandoff,
+              onOpenFailed = state::clearExternalAppHandoff,
+              onNotice = { state.notice = it },
+          )
       }
     }
 }

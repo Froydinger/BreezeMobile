@@ -87,6 +87,8 @@ class LiveTab(val id: String = UUID.randomUUID().toString(), val private: Boolea
     var chromiumRendererNeedsReload by mutableStateOf(false)
     /** Parent tab for a temporary window.open() tab; used to return after OAuth popups close. */
     var chromiumPopupOpenerId: String? = null
+    /** Prevents late renderer callbacks from destroying a popup already queued for teardown. */
+    var chromiumPopupClosing: Boolean = false
     var chromiumMedia: com.froydinger.breeze.browser.ChromiumMedia? = null
     var chromiumMediaPlaying: Boolean = false
     var chromiumPrivateProfileIsolated: Boolean = false
@@ -131,6 +133,11 @@ data class ExternalAppLaunchPrompt(
     val intent: Intent,
     val fallbackUrl: String?,
     val fallbackInNewTab: Boolean,
+)
+private data class ExternalAppHandoff(
+    val originAndPath: String,
+    val startedAtElapsedMs: Long,
+    val returnedToBreeze: Boolean = false,
 )
 data class PinnedSite(val id: String = UUID.randomUUID().toString(), val title: String, val url: String)
 data class SavedDownload(val id: String, val name: String, val uri: String, val time: Long = System.currentTimeMillis())
@@ -343,6 +350,8 @@ class BrowserState(private val app: Application) {
     var notice by mutableStateOf<String?>(null)
     var externalAppLaunchPrompt by mutableStateOf<ExternalAppLaunchPrompt?>(null)
         private set
+    /** Brief guard for apps that immediately send their HTTPS link back to Breeze. */
+    private var recentExternalAppHandoff: ExternalAppHandoff? = null
     var showFind by mutableStateOf(false)
     var ready by mutableStateOf(false)
     var credentials: com.froydinger.breeze.browser.BrowserCredentials? = null
@@ -718,6 +727,30 @@ class BrowserState(private val app: Application) {
         updateSessionPriorities()
         persist()
     }
+
+    /**
+     * WebView calls this while the popup's renderer is closing (for example, after an OAuth
+     * provider calls window.close()). Remove the tab now, but defer WebView destruction until the
+     * WebChromeClient callback has returned so teardown is not reentrant with Chromium.
+     */
+    fun closePopupWindow(tab: LiveTab) {
+        if (tabs.none { it === tab }) return
+        tab.chromiumPopupClosing = true
+        val popupView = tab.chromiumView
+        tab.chromiumView = null
+        tab.chromiumMedia?.close()
+        tab.chromiumMedia = null
+        tab.chromiumMediaPlaying = false
+        if (popupView != null) {
+            Handler(Looper.getMainLooper()).post {
+                runCatching { popupView.stopLoading() }
+                runCatching { (popupView.parent as? android.view.ViewGroup)?.removeView(popupView) }
+                runCatching { popupView.removeAllViews() }
+                runCatching { popupView.destroy() }
+            }
+        }
+        close(tab)
+    }
     fun home() {
         val current = selected
         if (current?.url.isNullOrBlank() || current?.url.equals("about:blank", ignoreCase = true)) { screen = "browser"; return }
@@ -794,6 +827,10 @@ class BrowserState(private val app: Application) {
         val uri = Uri.parse(url)
         if (standalonePwa || uri.scheme !in setOf("http", "https") || uri.host.isNullOrBlank()) {
             openExternalUrl(url, standalonePwa)
+            return
+        }
+        if (shouldOpenExternalAppReturnInBreeze(uri)) {
+            openExternalUrl(url)
             return
         }
         scope.launch {
@@ -1006,7 +1043,7 @@ class BrowserState(private val app: Application) {
     fun chromiumRendererGone(tab: LiveTab, view: WebView, didCrash: Boolean) {
         val isCurrent = isCurrentChromiumView(tab, view)
         if (!isCurrent) {
-            disposeTerminatedWebView(view)
+            if (!tab.chromiumPopupClosing) disposeTerminatedWebView(view)
             return
         }
 
@@ -2590,11 +2627,50 @@ class BrowserState(private val app: Application) {
         val prompt = externalAppLaunchPrompt ?: return
         externalAppLaunchPrompt = null
         if (openApp) {
+            prompt.intent.dataString?.let(::noteExternalAppHandoff)
             runCatching { app.startActivity(prompt.intent) }
-                .onFailure { openPromptFallback(prompt) }
+                .onFailure {
+                    prompt.intent.dataString?.let(::clearExternalAppHandoff)
+                    openPromptFallback(prompt)
+                }
         } else {
             openPromptFallback(prompt)
         }
+    }
+    fun noteExternalAppHandoff(url: String) {
+        val key = externalAppHandoffKey(Uri.parse(url)) ?: return
+        recentExternalAppHandoff = ExternalAppHandoff(key, android.os.SystemClock.elapsedRealtime())
+    }
+    fun clearExternalAppHandoff(url: String) {
+        val key = externalAppHandoffKey(Uri.parse(url)) ?: return
+        if (recentExternalAppHandoff?.originAndPath == key) recentExternalAppHandoff = null
+    }
+    private fun shouldOpenExternalAppReturnInBreeze(uri: Uri): Boolean {
+        val pending = recentExternalAppHandoff ?: return false
+        val age = android.os.SystemClock.elapsedRealtime() - pending.startedAtElapsedMs
+        if (age !in 0..120_000) {
+            recentExternalAppHandoff = null
+            return false
+        }
+        if (pending.originAndPath != externalAppHandoffKey(uri)) return false
+        recentExternalAppHandoff = pending.copy(returnedToBreeze = true)
+        return true
+    }
+    fun shouldSuppressOpenInAppBanner(url: String): Boolean {
+        val pending = recentExternalAppHandoff ?: return false
+        val age = android.os.SystemClock.elapsedRealtime() - pending.startedAtElapsedMs
+        if (age !in 0..120_000) {
+            recentExternalAppHandoff = null
+            return false
+        }
+        val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return false
+        return pending.returnedToBreeze && pending.originAndPath == externalAppHandoffKey(uri)
+    }
+    private fun externalAppHandoffKey(uri: Uri): String? {
+        val scheme = uri.scheme?.lowercase()?.takeIf { it in setOf("http", "https") } ?: return null
+        val host = uri.host?.lowercase()?.removePrefix("www.") ?: return null
+        val path = uri.encodedPath.orEmpty().ifBlank { "/" }.trimEnd('/').ifBlank { "/" }
+        return "$scheme://$host$path"
     }
     private fun openPromptFallback(prompt: ExternalAppLaunchPrompt) {
         val fallback = prompt.fallbackUrl ?: return
@@ -2619,6 +2695,8 @@ class BrowserState(private val app: Application) {
     private fun findExternalAppDestination(intent: Intent): com.froydinger.breeze.ui.NativeAppDestination? {
         val manager = app.packageManager
         val flags = android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
+        val mainPackage = app.packageName.removeSuffix(".dev")
+        val breezePackages = setOf(mainPackage, "$mainPackage.dev")
         fun webIntent(uri: Uri) = Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)
         val browsers = runCatching {
             manager.queryIntentActivities(webIntent(Uri.parse("https://example.com/")), flags)
@@ -2632,7 +2710,7 @@ class BrowserState(private val app: Application) {
         val resolved = runCatching {
             manager.queryIntentActivities(queryIntent, flags).asSequence()
                 .filter { it.activityInfo.exported && it.activityInfo.enabled }
-                .filter { it.activityInfo.packageName != app.packageName && it.activityInfo.packageName !in browsers }
+                .filter { it.activityInfo.packageName !in breezePackages && it.activityInfo.packageName !in browsers }
                 .filter { packageName == null || it.activityInfo.packageName == packageName }
                 .sortedByDescending { it.priority }
                 .firstOrNull()
